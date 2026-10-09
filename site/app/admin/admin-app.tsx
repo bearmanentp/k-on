@@ -1,5 +1,7 @@
 "use client";
 
+import { FormEvent, useEffect, useState } from "react";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import {
   Admin,
   BooleanField,
@@ -22,6 +24,7 @@ import {
   TextInput,
   required,
   useGetList,
+  useNotify,
 } from "react-admin";
 import {
   Bell,
@@ -45,6 +48,7 @@ import {
 import { RichTextInput } from "./rich-text-input";
 import { AdminDashboard } from "./dashboard";
 import { SeatLayoutInput } from "./seat-layout-input";
+import { db } from "@/lib/firebase";
 
 const searchFilters = [<TextInput key="q" source="q" label="검색" alwaysOn />];
 
@@ -542,8 +546,22 @@ function ProductCreate() {
     </Create>
   );
 }
+type SiteDesignState={siteName:string;logoUrl:string;fontFamily:string;accentColor:string;heroEyebrow:string;heroTitle:string;heroDescription:string;heroImages:string;characterImages:string;communityMessage:string};
+const DEFAULT_SITE_DESIGN:SiteDesignState={siteName:"K-ON! FANDOM KR",logoUrl:"",fontFamily:'"Pretendard", "Noto Sans KR", system-ui, sans-serif',accentColor:"#ff4f6d",heroEyebrow:"AFTER SCHOOL, TOGETHER",heroTitle:"좋아하는 음악으로\n다시 만나는 우리",heroDescription:"",heroImages:"/hero-music-room.png",characterImages:"",communityMessage:""};
 function SiteSettingsList() {
-  return <List pagination={false}><Datagrid rowClick="edit"><TextField source="siteName" label="사이트 이름"/><TextField source="fontFamily" label="전체 글꼴"/><TextField source="accentColor" label="강조 색상"/><DateField source="updatedAt" label="마지막 변경" showTime/><EditButton/></Datagrid></List>;
+  const [values,setValues]=useState(DEFAULT_SITE_DESIGN),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false);
+  const notify=useNotify();
+  useEffect(()=>{if(!db){setLoading(false);return;}return onSnapshot(doc(db,"siteSettings","main"),snapshot=>{const data=snapshot.data()||{};setValues({...DEFAULT_SITE_DESIGN,...data,heroImages:Array.isArray(data.heroImages)?data.heroImages.join("\n"):String(data.heroImages||DEFAULT_SITE_DESIGN.heroImages),characterImages:Array.isArray(data.characterImages)?data.characterImages.map((item:unknown)=>typeof item==="object"&&item?`${String((item as {name?:unknown}).name||"")} | ${String((item as {url?:unknown}).url||"")} | ${String((item as {source?:unknown}).source||"")}`:String(item)).join("\n"):String(data.characterImages||"")});setLoading(false);},()=>{setLoading(false);notify("사이트 디자인 설정을 불러오지 못했습니다.",{type:"error"});});},[notify]);
+  const change=(key:keyof SiteDesignState)=>(value:string)=>setValues(current=>({...current,[key]:value}));
+  async function save(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!db)return notify("Firebase가 연결되지 않았습니다.",{type:"error"});setSaving(true);try{const heroImages=values.heroImages.split("\n").map(item=>item.trim()).filter(Boolean),characterImages=values.characterImages.split("\n").map(item=>item.trim()).filter(Boolean).map(item=>{const [name,url,source]=item.split("|").map(part=>part.trim());return{name,url,source};});await setDoc(doc(db,"siteSettings","main"),{...values,heroImages,characterImages,updatedAt:new Date().toISOString()},{merge:true});notify("사이트 디자인을 저장했습니다.",{type:"success"});}catch{notify("사이트 디자인 저장에 실패했습니다.",{type:"error"});}finally{setSaving(false);}}
+  if(loading)return <section className="site-design-editor"><p>사이트 디자인 설정을 불러오는 중입니다…</p></section>;
+  const previewImage=values.heroImages.split("\n").map(item=>item.trim()).find(Boolean);
+  return <section className="site-design-editor"><header><small>SITE APPEARANCE</small><h1>사이트 디자인</h1><p>홈페이지의 로고, 글꼴, 색상과 히어로 배너를 여기에서 바로 변경합니다.</p></header><form onSubmit={save}>
+    <fieldset><legend>브랜드와 전체 스타일</legend><label>사이트 이름<input value={values.siteName} onChange={event=>change("siteName")(event.target.value)}/></label><label>로고 이미지 URL<input value={values.logoUrl} onChange={event=>change("logoUrl")(event.target.value)} placeholder="https://..."/></label><label>전체 글꼴<input list="site-font-presets" value={values.fontFamily} onChange={event=>change("fontFamily")(event.target.value)}/><datalist id="site-font-presets"><option value={'"Pretendard", "Noto Sans KR", sans-serif'}/><option value={'"Noto Sans KR", sans-serif'}/><option value={'Georgia, "Times New Roman", serif'}/><option value={'system-ui, sans-serif'}/></datalist><small>CSS font-family 값을 입력하거나 추천 항목을 선택하세요.</small></label><label>강조 색상<div className="site-color-control"><input type="color" value={/^#[0-9a-f]{6}$/i.test(values.accentColor)?values.accentColor:"#ff4f6d"} onChange={event=>change("accentColor")(event.target.value)}/><input value={values.accentColor} onChange={event=>change("accentColor")(event.target.value)} placeholder="#ff4f6d"/></div></label></fieldset>
+    <fieldset><legend>히어로 배너</legend><label>작은 문구<input value={values.heroEyebrow} onChange={event=>change("heroEyebrow")(event.target.value)}/></label><label>메인 제목<textarea rows={3} value={values.heroTitle} onChange={event=>change("heroTitle")(event.target.value)}/></label><label>설명<textarea rows={3} value={values.heroDescription} onChange={event=>change("heroDescription")(event.target.value)}/></label><label className="wide">배너 이미지 URL<textarea rows={6} value={values.heroImages} onChange={event=>change("heroImages")(event.target.value)} placeholder="이미지 URL을 한 줄에 하나씩 입력"/><small>한 줄에 하나씩 입력합니다. 이미지가 여러 장이면 홈페이지에서 슬라이드됩니다.</small></label>{previewImage&&<div className="site-hero-preview" style={{backgroundImage:`linear-gradient(90deg,rgba(20,13,16,.75),rgba(20,13,16,.2)),url(${previewImage})`}}><small>{values.heroEyebrow}</small><b>{values.heroTitle}</b><span>{values.heroDescription}</span></div>}</fieldset>
+    <fieldset><legend>콘텐츠 이미지와 문구</legend><label className="wide">캐릭터 이미지 목록<textarea rows={6} value={values.characterImages} onChange={event=>change("characterImages")(event.target.value)} placeholder="이름 | 이미지 URL | 출처 URL"/><small>이름 | 이미지 URL | 출처 URL 형식으로 한 줄에 한 명씩 입력하세요.</small></label><label className="wide">커뮤니티 문구<input value={values.communityMessage} onChange={event=>change("communityMessage")(event.target.value)}/></label></fieldset>
+    <footer><button type="submit" disabled={saving}>{saving?"저장 중…":"사이트 디자인 저장"}</button></footer>
+  </form></section>;
 }
 function SiteSettingsForm() {
   return (
@@ -821,7 +839,6 @@ export default function AdminApp() {
           options={{ label: "사이트 디자인" }}
           icon={ShieldCheck}
           list={SiteSettingsList}
-          edit={SiteSettingsEdit}
         />
         <Resource
           name="adminDirectory"
