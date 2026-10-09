@@ -680,6 +680,8 @@ export default function Home() {
       title: String(f.get("title")),
       body: String(f.get("body")),
       bodyRich:bodyRich?JSON.parse(bodyRich):null,
+      attachmentName:String(f.get("attachmentName")||""),
+      attachmentUrl:String(f.get("attachmentUrl")||""),
       category: String(f.get("category")),
       pinned: f.get("pinned") === "on",
       createdAt: new Date().toISOString(),
@@ -1822,6 +1824,8 @@ function AdminDialog(p: AdminProps) {
                 <Input name="category" placeholder="분류" required />
                 <Input name="title" placeholder="제목" required />
                 <FormRichTextEditor label="본문" />
+                <Input name="attachmentName" placeholder="첨부 이름" />
+                <Input name="attachmentUrl" type="url" placeholder="첨부 공유 링크" />
                 <label className="check-line">
                   <input name="pinned" type="checkbox" />
                   필독
@@ -1836,6 +1840,8 @@ function AdminDialog(p: AdminProps) {
                 <Input name="category" placeholder="분류" required />
                 <Input name="title" placeholder="제목" required />
                 <FormRichTextEditor label="본문" />
+                <Input name="attachmentName" placeholder="첨부 이름" />
+                <Input name="attachmentUrl" type="url" placeholder="첨부 공유 링크" />
                 <Button>소식 등록</Button>
               </form>
             </div>

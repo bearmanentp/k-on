@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot } from "firebase/firestore";
+import { collection, doc, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { createColumnHelper, tableFeatures } from "@tanstack/table-core";
 import { flexRender, useTable } from "@tanstack/react-table";
@@ -24,7 +24,7 @@ const columns=helper.columns([
 export function AdminDashboard(){
   const [inquiries,setInquiries]=useState<InquiryRow[]>([]),[storageAlert,setStorageAlert]=useState<StorageAlert|null>(null);
   const {permissions}=usePermissions();
-  useEffect(()=>{if(!db)return;return onSnapshot(collection(db,"inquiries"),snapshot=>setInquiries(snapshot.docs.map(item=>({id:item.id,...item.data()} as InquiryRow)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,6)));},[]);
+  useEffect(()=>{if(!db)return;const recentQuery=query(collection(db,"inquiries"),orderBy("createdAt","desc"),limit(6));return onSnapshot(recentQuery,snapshot=>setInquiries(snapshot.docs.map(item=>({id:item.id,...item.data()} as InquiryRow))));},[]);
   useEffect(()=>{if(!db)return;return onSnapshot(doc(db,"adminAlerts","storage-capacity"),snapshot=>setStorageAlert(snapshot.exists()?snapshot.data() as StorageAlert:null));},[]);
   const data=useMemo(()=>inquiries,[inquiries]);
   const table=useTable({features,columns,data,getRowId:row=>row.id});

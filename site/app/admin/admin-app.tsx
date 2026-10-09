@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import {
   Admin,
   BooleanField,
@@ -15,6 +16,7 @@ import {
   EditButton,
   EmailField,
   FormDataConsumer,
+  FunctionField,
   List,
   NumberField,
   NumberInput,
@@ -26,6 +28,7 @@ import {
   required,
   useGetList,
   useNotify,
+  usePermissions,
 } from "react-admin";
 import {
   Bell,
@@ -34,6 +37,7 @@ import {
   CircleUserRound,
   ClipboardList,
   HelpCircle,
+  ImagePlus,
   ListFilter,
   Mail,
   Megaphone,
@@ -42,7 +46,8 @@ import {
   Store,
   Ticket,
 } from "lucide-react";
-import { HashRouter } from "react-router-dom";
+import { HashRouter, Link, useLocation } from "react-router-dom";
+import { useFormContext } from "react-hook-form";
 import {
   firebaseAuthProvider,
   firebaseDataProvider,
@@ -50,7 +55,7 @@ import {
 import { RichTextInput } from "./rich-text-input";
 import { AdminDashboard } from "./dashboard";
 import { SeatLayoutInput } from "./seat-layout-input";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
 
 const searchFilters = [<TextInput key="q" source="q" label="검색" alwaysOn />];
 
@@ -279,13 +284,9 @@ function InquiryEdit() {
           rows={7}
           fullWidth
         />
-        <TextInput
-          source="answer"
-          label="관리자 답변"
-          multiline
-          rows={7}
-          fullWidth
-        />
+        <TextInput source="attachmentName" label="첨부 이름" disabled />
+        <TextInput source="attachmentUrl" label="첨부 링크" disabled fullWidth />
+        <RichTextInput label="관리자 답변" source="answerRich" plainSource="answer" />
         <SelectInput
           source="status"
           label="상태"
@@ -498,11 +499,13 @@ function ProductList() {
     </List>
   );
 }
-function ProductShopSelect(){const {data=[],isPending}=useGetList("shops",{pagination:{page:1,perPage:100},sort:{field:"order",order:"ASC"}});return <SelectInput source="shopId" label="판매 상점" choices={data.map(shop=>({id:String(shop.id),name:String(shop.name||shop.id)}))} defaultValue="official" validate={required()} isPending={isPending} fullWidth/>;}
+function ProductShopSelect({lockedShopId=""}:{lockedShopId?:string}){const {data=[],isPending}=useGetList("shops",{pagination:{page:1,perPage:100},sort:{field:"order",order:"ASC"}}),{getValues,setValue}=useFormContext();const choices=data.map(shop=>({id:String(shop.id),name:String(shop.name||shop.id)}));useEffect(()=>{const nextShopId=lockedShopId||String(choices[0]?.id||"");if(nextShopId&&!getValues("shopId"))setValue("shopId",nextShopId,{shouldDirty:false});},[choices,getValues,lockedShopId,setValue]);return <SelectInput source="shopId" label="판매 상점" choices={choices} validate={required()} isPending={isPending} readOnly={Boolean(lockedShopId)} helperText={lockedShopId?"상점 페이지에서 선택된 상점으로 등록됩니다.":"상품을 등록할 상점을 선택하세요."} fullWidth/>;}
 function ProductForm() {
+  const location=useLocation();
+  const lockedShopId=new URLSearchParams(location.search).get("shopId")||"";
   return (
-    <SimpleForm defaultValues={{active:true,shopId:"official"}}>
-      <ProductShopSelect />
+    <SimpleForm defaultValues={{active:true,...(lockedShopId?{shopId:lockedShopId}:{})}}>
+      <ProductShopSelect lockedShopId={lockedShopId} />
       <BooleanInput source="active" label="판매 노출" defaultValue={true} />
       <TextInput source="name" label="상품명" validate={required()} fullWidth />
       <TextInput
@@ -549,8 +552,10 @@ function ProductCreate() {
     </Create>
   );
 }
-function ShopList(){return <List sort={{field:"order",order:"ASC"}} pagination={false}><Datagrid rowClick="edit"><BooleanField source="active" label="노출"/><TextField source="name" label="상점명"/><TextField source="description" label="소개"/><TextField source="bankName" label="은행"/><NumberField source="order" label="순서"/><EditButton/><DeleteButton/></Datagrid></List>}
-function ShopForm(){return <SimpleForm defaultValues={{active:true,order:10}}><BooleanInput source="active" label="상점 노출"/><TextInput source="name" label="상점명" validate={required()} fullWidth/><TextInput source="description" label="상점 소개" multiline rows={3} fullWidth/><TextInput source="imageUrl" label="상점 대표 이미지 URL" fullWidth/><NumberInput source="order" label="노출 순서" min={0}/><TextInput source="bankName" label="은행명"/><TextInput source="accountNumber" label="계좌번호" fullWidth/><TextInput source="accountHolder" label="예금주"/></SimpleForm>}
+function ShopList(){const {permissions=[]}=usePermissions<string[]>();const canEdit=permissions.includes("owner")||permissions.includes("design");return <List sort={{field:"order",order:"ASC"}} pagination={false}><Datagrid rowClick={canEdit?"edit":false}><BooleanField source="active" label="노출"/><TextField source="name" label="상점명"/><TextField source="description" label="소개"/><TextField source="bankName" label="은행"/><NumberField source="order" label="순서"/><FunctionField label="상품 등록" render={record=><Link className="shop-product-create" to={`/products/create?shopId=${encodeURIComponent(String(record.id))}`}>상품 등록</Link>}/>{canEdit&&<EditButton/>}{canEdit&&<DeleteButton/>}</Datagrid></List>}
+const formatManagerEmails=(value:unknown)=>Array.isArray(value)?value.join("\n"):String(value||"");
+const parseManagerEmails=(value:string)=>Array.from(new Set(value.split(/[\n,]/).map(item=>item.trim().toLowerCase()).filter(Boolean)));
+function ShopForm(){return <SimpleForm defaultValues={{active:true,order:10,managerEmails:[]}}><BooleanInput source="active" label="상점 노출"/><TextInput source="name" label="상점명" validate={required()} fullWidth/><TextInput source="description" label="상점 소개" multiline rows={3} fullWidth/><TextInput source="imageUrl" label="상점 대표 이미지 URL" fullWidth/><NumberInput source="order" label="노출 순서" min={0}/><TextInput source="bankName" label="은행명"/><TextInput source="accountNumber" label="계좌번호" fullWidth/><TextInput source="accountHolder" label="예금주"/><TextInput source="managerEmails" label="상품 담당자 이메일" format={formatManagerEmails} parse={parseManagerEmails} multiline rows={4} fullWidth helperText="한 줄에 하나씩 입력하세요. 관리자 권한에서 ‘상점 담당’ 권한도 함께 부여해야 이 상점의 상품을 관리할 수 있습니다."/></SimpleForm>}
 function ShopCreate(){return <Create><ShopForm/></Create>}
 function ShopEdit(){return <Edit><ShopForm/></Edit>}
 type SiteDesignState={siteName:string;logoUrl:string;fontFamily:string;accentColor:string;heroEyebrow:string;heroTitle:string;heroDescription:string;heroImages:string;characterImages:string;communityMessage:string};
@@ -663,6 +668,15 @@ function SiteSettingsEdit() {
       <SiteSettingsForm />
     </Edit>
   );
+}
+function ImageHostingSettings(){
+  const [configured,setConfigured]=useState(false),[configuredAt,setConfiguredAt]=useState(""),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false);
+  const notify=useNotify();
+  async function refresh(){if(!functions){setLoading(false);return;}try{const call=httpsCallable<unknown,{configured:boolean;configuredAt?:string}>(functions,"getImageHostingStatus"),result=await call();setConfigured(result.data.configured);setConfiguredAt(result.data.configuredAt||"");}catch{notify("이미지 호스팅 상태를 확인하지 못했습니다.",{type:"error"});}finally{setLoading(false);}}
+  useEffect(()=>{void refresh();},[]);
+  async function register(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!functions)return;const form=event.currentTarget,apiKey=String(new FormData(form).get("apiKey")||"").trim();if(!apiKey)return;setSaving(true);try{await httpsCallable(functions,"setImageHostingKey")({apiKey});form.reset();await refresh();notify("ImgBB API 키를 등록했습니다. 키 값은 다시 표시되지 않습니다.",{type:"success"});}catch{notify("API 키 등록에 실패했습니다.",{type:"error"});}finally{setSaving(false);}}
+  async function remove(){if(!functions||!window.confirm("등록된 ImgBB API 키를 삭제할까요? 삭제 후 이미지 자동 업로드를 사용할 수 없습니다."))return;setSaving(true);try{await httpsCallable(functions,"deleteImageHostingKey")();await refresh();notify("ImgBB API 키를 삭제했습니다.",{type:"success"});}catch{notify("API 키 삭제에 실패했습니다.",{type:"error"});}finally{setSaving(false);}}
+  return <section className="image-hosting-settings"><header><small>PRIVATE IMAGE HOSTING</small><h1>이미지 호스팅 API</h1><p>키는 서버 전용 저장소에 보관되며 관리자 화면과 조회 API에서 절대 반환하지 않습니다.</p></header><div className={`image-hosting-status ${configured?"ready":"empty"}`}><ImagePlus/><div><b>{loading?"상태 확인 중…":configured?"ImgBB API 키 등록됨":"API 키 미등록"}</b>{configuredAt&&<small>마지막 등록: {new Date(configuredAt).toLocaleString("ko-KR")}</small>}</div></div><form onSubmit={register}><label>새 API 키<input name="apiKey" type="password" autoComplete="new-password" placeholder="키를 입력한 뒤 등록하세요" required minLength={8}/></label><p>등록 후에는 키를 확인하거나 복사할 수 없고, 새 키로 덮어쓰거나 삭제만 할 수 있습니다.</p><div><button type="submit" disabled={saving}>{configured?"새 키로 교체":"API 키 등록"}</button>{configured&&<button type="button" className="danger" disabled={saving} onClick={remove}>등록 키 삭제</button>}</div></form></section>;
 }
 function BoardList() {
   return (
@@ -855,6 +869,7 @@ export default function AdminApp() {
           icon={ShieldCheck}
           list={SiteSettingsList}
         />
+        <Resource name="imageHosting" options={{label:"이미지 호스팅 API"}} icon={ImagePlus} list={ImageHostingSettings}/>
         <Resource
           name="adminDirectory"
           options={{ label: "관리자 권한" }}

@@ -14,9 +14,49 @@ const labels = {
   completed: "행사 안내가 완료되었습니다.",
   canceled: "예약이 취소되었습니다.",
 };
-const allowedPermissions = ["design", "events", "notices", "applications", "users", "points"];
+const allowedPermissions = ["design", "events", "notices", "applications", "users", "points", "shopManagers"];
 const storageWarningBytes = Number(process.env.STORAGE_WARNING_BYTES || 4 * 1024 ** 3);
 const storageCriticalBytes = Number(process.env.STORAGE_CRITICAL_BYTES || 4.8 * 1024 ** 3);
+
+function canManageDesign(request) {
+  return request.auth && (request.auth.token.role === "owner" || (Array.isArray(request.auth.token.permissions) && request.auth.token.permissions.includes("design")));
+}
+
+export const setImageHostingKey = onCall(async request => {
+  if (!canManageDesign(request)) throw new HttpsError("permission-denied", "이미지 호스팅 설정 권한이 없습니다.");
+  const apiKey = String(request.data?.apiKey || "").trim();
+  if (apiKey.length < 8) throw new HttpsError("invalid-argument", "올바른 ImgBB API 키를 입력해 주세요.");
+  await getFirestore().doc("privateConfig/imgbb").set({ apiKey, configuredAt: new Date().toISOString(), configuredBy: request.auth.uid });
+  return { configured: true };
+});
+
+export const deleteImageHostingKey = onCall(async request => {
+  if (!canManageDesign(request)) throw new HttpsError("permission-denied", "이미지 호스팅 설정 권한이 없습니다.");
+  await getFirestore().doc("privateConfig/imgbb").delete();
+  return { configured: false };
+});
+
+export const getImageHostingStatus = onCall(async request => {
+  if (!canManageDesign(request)) throw new HttpsError("permission-denied", "이미지 호스팅 설정 권한이 없습니다.");
+  const snapshot = await getFirestore().doc("privateConfig/imgbb").get();
+  return { configured: snapshot.exists, configuredAt: snapshot.data()?.configuredAt || null };
+});
+
+export const uploadEditorImage = onCall({ timeoutSeconds: 30, memory: "256MiB" }, async request => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "로그인 후 이미지를 업로드해 주세요.");
+  const image = String(request.data?.image || ""), name = String(request.data?.name || "image").slice(0, 100);
+  if (!image || image.length > 11_000_000) throw new HttpsError("invalid-argument", "이미지는 8MB 이하로 업로드해 주세요.");
+  const config = await getFirestore().doc("privateConfig/imgbb").get();
+  const apiKey = String(config.data()?.apiKey || "");
+  if (!apiKey) throw new HttpsError("failed-precondition", "관리자가 이미지 호스팅 API 키를 등록하지 않았습니다.");
+  const form = new FormData();
+  form.append("image", image.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, ""));
+  form.append("name", name.replace(/\.[^.]+$/, ""));
+  const response = await fetch(`https://api.imgbb.com/1/upload?key=${encodeURIComponent(apiKey)}`, { method: "POST", body: form, signal: AbortSignal.timeout(25000) });
+  const result = await response.json();
+  if (!response.ok || !result?.success || !result?.data?.url) throw new HttpsError("internal", "이미지 호스팅 업로드에 실패했습니다.");
+  return { url: result.data.url, viewerUrl: result.data.url_viewer || "" };
+});
 
 async function updateStorageUsage(delta) {
   const firestore = getFirestore();

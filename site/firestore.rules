@@ -8,9 +8,24 @@ service cloud.firestore {
         || (request.auth.token.permissions is list && permission in request.auth.token.permissions)
       );
     }
+    function isAssignedShopManager(shopId) {
+      let shop = get(/databases/$(database)/documents/shops/$(shopId)).data;
+      return has('shopManagers')
+        && request.auth.token.email is string
+        && (
+          (shop.managerUids is list && request.auth.uid in shop.managerUids)
+          || (shop.managerEmails is list && request.auth.token.email in shop.managerEmails)
+        );
+    }
+    function managesShop(shopId) {
+      return has('design') || isAssignedShopManager(shopId);
+    }
     match /siteSettings/{id} {
       allow read: if true;
       allow write: if has('design');
+    }
+    match /privateConfig/{id} {
+      allow read, write: if false;
     }
     match /events/{id} {
       allow read: if true;
@@ -103,12 +118,23 @@ service cloud.firestore {
       allow read: if has('applications') || has('events');
     }
     match /products/{id} {
-      allow read: if resource.data.active == true || has('design') || has('notices');
-      allow create, update, delete: if has('design') || has('notices');
+      allow read: if resource.data.active == true || (signedIn() && (request.auth.token.role == 'owner' || request.auth.token.permissions is list));
+      allow create: if request.resource.data.shopId is string && managesShop(request.resource.data.shopId);
+      // 디자인 담당자는 shopId가 없던 기존 상품도 정리할 수 있습니다.
+      // 상점 담당자는 배정된 상점 안에서만 생성·수정·삭제할 수 있습니다.
+      allow update: if has('design') || (
+        resource.data.shopId is string
+        && request.resource.data.shopId is string
+        && isAssignedShopManager(resource.data.shopId)
+        && isAssignedShopManager(request.resource.data.shopId)
+      );
+      allow delete: if has('design') || (
+        resource.data.shopId is string && isAssignedShopManager(resource.data.shopId)
+      );
     }
     match /shops/{id} {
-      allow read: if resource.data.active == true || has('design') || has('notices');
-      allow create, update, delete: if has('design') || has('notices');
+      allow read: if true;
+      allow create, update, delete: if has('design');
     }
     match /shopSettings/{id} {
       allow read: if true;

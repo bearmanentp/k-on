@@ -1,6 +1,6 @@
 import { getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getMessaging, isSupported } from "firebase/messaging";
 import { getFunctions } from "firebase/functions";
@@ -16,7 +16,19 @@ const firebaseConfig = {
 export const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 const app = firebaseConfigured ? (getApps()[0] ?? initializeApp(firebaseConfig)) : null;
 export const auth = app ? getAuth(app) : null;
-export const db = app ? getFirestore(app) : null;
+function initializeSiteFirestore(){
+  if(!app)return null;
+  try{
+    return initializeFirestore(app,{
+      experimentalAutoDetectLongPolling:true,
+      localCache:typeof window==="undefined"?memoryLocalCache():persistentLocalCache({tabManager:persistentMultipleTabManager()}),
+    });
+  }catch{
+    // 개발 중 HMR로 이미 초기화된 인스턴스가 있으면 해당 인스턴스를 재사용합니다.
+    return getFirestore(app);
+  }
+}
+export const db = initializeSiteFirestore();
 export const storage = app ? getStorage(app) : null;
 export const functions = app ? getFunctions(app) : null;
 export const messagingPromise = app
