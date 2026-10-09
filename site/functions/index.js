@@ -2,7 +2,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { getAuth } from "firebase-admin/auth";
-import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentDeleted, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { onObjectDeleted, onObjectFinalized } from "firebase-functions/v2/storage";
 
@@ -85,6 +85,49 @@ export const manageAdminPermissions = onCall(async request => {
     updatedBy: request.auth.uid,
   }, { merge: true });
   return { uid: target.uid, email, permissions, active: permissions.length > 0 };
+});
+
+const NICKNAME_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+function normalizeNickname(value) {
+  return String(value || "").trim().normalize("NFC");
+}
+function nicknameKey(value) {
+  return normalizeNickname(value).toLocaleLowerCase("ko-KR");
+}
+
+// Nicknames are claimed in a transaction so two users cannot take the same name.
+// The cooldown is enforced here (not in the client) and therefore cannot be bypassed.
+export const setNickname = onCall(async request => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
+  const nickname = normalizeNickname(request.data?.nickname);
+  if (nickname.length < 2 || nickname.length > 20) throw new HttpsError("invalid-argument", "닉네임은 2~20자로 입력해 주세요.");
+  if (!/^[\p{L}\p{N} _.-]+$/u.test(nickname)) throw new HttpsError("invalid-argument", "닉네임에는 한글, 영문, 숫자와 일부 기호만 사용할 수 있습니다.");
+  const key = nicknameKey(nickname);
+  const firestore = getFirestore();
+  const userRef = firestore.doc(`users/${request.auth.uid}`);
+  const claimRef = firestore.doc(`nicknameClaims/${key}`);
+  const now = new Date();
+  await firestore.runTransaction(async transaction => {
+    const [userSnap, claimSnap] = await Promise.all([transaction.get(userRef), transaction.get(claimRef)]);
+    const user = userSnap.data() || {};
+    const currentKey = user.nicknameKey;
+    const currentChangedAt = user.nicknameChangedAt?.toDate?.() || (user.nicknameChangedAt ? new Date(user.nicknameChangedAt) : null);
+    if (currentKey === key) return;
+    if (currentChangedAt && now.getTime() - currentChangedAt.getTime() < NICKNAME_COOLDOWN_MS) {
+      const remainingDays = Math.ceil((NICKNAME_COOLDOWN_MS - (now.getTime() - currentChangedAt.getTime())) / 86400000);
+      throw new HttpsError("failed-precondition", `닉네임은 변경 후 30일이 지나야 다시 변경할 수 있습니다. ${remainingDays}일 후에 시도해 주세요.`);
+    }
+    if (claimSnap.exists && claimSnap.data()?.uid !== request.auth.uid) throw new HttpsError("already-exists", "이미 사용 중인 닉네임입니다.");
+    if (currentKey) transaction.delete(firestore.doc(`nicknameClaims/${currentKey}`));
+    transaction.set(claimRef, { uid: request.auth.uid, nickname, updatedAt: now.toISOString() });
+    transaction.set(userRef, { email: request.auth.token.email || user.email || "", nickname, nicknameKey: key, nicknameChangedAt: now.toISOString() }, { merge: true });
+  });
+  return { nickname };
+});
+
+export const releaseNicknameOnAccountDeletion = onDocumentDeleted("users/{uid}", async event => {
+  const key = event.data?.data()?.nicknameKey;
+  if (key) await getFirestore().doc(`nicknameClaims/${key}`).delete();
 });
 
 export const manageUserPoints = onCall(async request => {

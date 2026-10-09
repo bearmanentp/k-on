@@ -8,7 +8,7 @@ import Link from "next/link";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { addDoc, collection, doc, onSnapshot, orderBy, query, updateDoc, where } from "firebase/firestore";
 import { ArrowLeft, CircleUserRound, Home, LogOut, MessageSquareText, Newspaper, PenLine } from "lucide-react";
-import { auth, db, firebaseConfigured } from "@/lib/firebase";
+import { auth, db, firebaseConfigured, functions } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +19,7 @@ import { authErrorMessage, loginWithEmail, loginWithGoogle, registerWithEmail } 
 
 type BoardTab = BoardKey;
 type Permission = "design" | "events" | "notices" | "applications" | "users" | "points";
-type Post = { id:string; title:string; body:string; bodyRich?:unknown; prefix?:string; category:string; createdAt:string; pinned?:boolean };
+type Post = { id:string; title:string; body:string; bodyRich?:unknown; prefix?:string; category:string; createdAt:string; pinned?:boolean; attachmentName?:string; attachmentUrl?:string; pollQuestion?:string; pollOptions?:string };
 type Inquiry = { id:string; userId:string; userEmail:string; title:string; body:string; category:string; createdAt:string; status:"waiting"|"answered"; answer?:string; private?:boolean };
 type InquiryCategory = { id:string; label:string; description?:string; active?:boolean; order?:number };
 type RouteState = { tab:BoardTab; itemId?:string; compose?:boolean };
@@ -35,6 +35,8 @@ function readRoute():RouteState {
 }
 function formatDate(value:string){return new Date(value).toLocaleDateString("ko-KR");}
 function postBody(post:Post){if(!post.bodyRich||typeof post.bodyRich!=="object")return <p>{post.body}</p>;try{return <div dangerouslySetInnerHTML={{__html:generateHTML(post.bodyRich as Parameters<typeof generateHTML>[0],[StarterKit])}}/>;}catch{return <p>{post.body}</p>;}}
+function directFileUrl(value:string){const match=value.match(/drive\.google\.com\/file\/d\/([^/]+)/)||value.match(/[?&]id=([^&]+)/);return match?`https://drive.google.com/uc?export=download&id=${match[1]}`:value;}
+function PollBox({post}:{post:Post}){const options=(post.pollOptions||"").split(",").map(v=>v.trim()).filter(Boolean);if(!post.pollQuestion||options.length<2)return null;return <div className="poll-box"><b>{post.pollQuestion}</b>{options.map(option=><button type="button" key={option} onClick={async()=>{if(!auth?.currentUser||!db)return window.alert("투표하려면 로그인해 주세요.");await addDoc(collection(db,"pollVotes"),{postId:post.id,option,userId:auth.currentUser.uid,createdAt:new Date().toISOString()});window.alert("투표가 저장되었습니다.");}}>{option}</button>)}</div>}
 
 export default function BoardsPage(){
   const [route,setRoute]=useState<RouteState>({tab:"news"});
@@ -82,7 +84,7 @@ export default function BoardsPage(){
     if(!auth)return setToast("Firebase 연결 후 로그인할 수 있습니다.");
     const form=new FormData(e.currentTarget);
     try{
-      if(authMode==="register"){if(!termsAccepted||!privacyAccepted)return setAuthNotice("이용약관과 개인정보 처리방침에 모두 동의해 주세요.");await registerWithEmail(auth,String(form.get("email")),String(form.get("password")));setToast("인증 메일을 보냈습니다. 이메일 인증 후 로그인해 주세요.");}
+      if(authMode==="register"){if(!termsAccepted||!privacyAccepted)return setAuthNotice("이용약관과 개인정보 처리방침에 모두 동의해 주세요.");if(!functions)return setAuthNotice("Firebase Functions 연결 후 회원가입할 수 있습니다.");const requestedNickname=String(window.prompt("가입에 사용할 닉네임을 입력해 주세요.")||"").trim();if(!requestedNickname)return setAuthNotice("닉네임을 입력해 주세요.");await registerWithEmail(auth,functions,String(form.get("email")),String(form.get("password")),requestedNickname);setToast("인증 메일을 보냈습니다. 이메일 인증 후 로그인해 주세요.");}
       else {await loginWithEmail(auth,String(form.get("email")),String(form.get("password")));setToast("로그인했습니다.");}
     }catch(error){setAuthNotice("");setToast(authErrorMessage(error));}
   }
@@ -115,7 +117,7 @@ export default function BoardsPage(){
     <section className="board-page-content">
       <div className="board-page-heading"><div><small>{route.tab.toUpperCase()}</small><h2><CurrentIcon/>{boardByKey[route.tab].label} 게시판</h2><p>{boardByKey[route.tab].description}</p></div>{route.tab==="inquiries"&&user&&!route.compose&&<a className="board-link-button" href="#inquiries/new"><PenLine/>문의 작성</a>}</div>
 
-      {route.tab!=="inquiries"&&route.itemId&&<article className="board-article"><a className="back-link" href={`#${route.tab}`}><ArrowLeft/>목록으로</a>{selectedPost?<><div className="article-meta">{selectedPost.prefix&&<span>{selectedPost.prefix}</span>}<span>{selectedPost.category}</span><time>{formatDate(selectedPost.createdAt)}</time></div><h2>{selectedPost.title}</h2><div className="article-body">{postBody(selectedPost)}</div></>:<div className="board-empty">글을 찾을 수 없습니다.</div>}</article>}
+      {route.tab!=="inquiries"&&route.itemId&&<article className="board-article"><a className="back-link" href={`#${route.tab}`}><ArrowLeft/>목록으로</a>{selectedPost?<><div className="article-meta">{selectedPost.prefix&&<span>{selectedPost.prefix}</span>}<span>{selectedPost.category}</span><time>{formatDate(selectedPost.createdAt)}</time></div><h2>{selectedPost.title}</h2><div className="article-body">{postBody(selectedPost)}</div>{selectedPost.attachmentUrl&&<a className="file-attachment" href={directFileUrl(selectedPost.attachmentUrl)} target="_blank" rel="noreferrer">📎 {selectedPost.attachmentName||"첨부 파일 열기"}</a>}<PollBox post={selectedPost}/></>:<div className="board-empty">글을 찾을 수 없습니다.</div>}</article>}
 
       {route.tab!=="inquiries"&&!route.itemId&&<><div className="table-wrap board-table"><table><thead><tr><th>번호</th><th>분류</th><th>제목</th><th>작성일</th></tr></thead><tbody>{pageItems.length?pageItems.map((item,index)=><tr key={item.id}><td>{item.pinned?"필독":posts.length-((page-1)*pageSize+index)}</td><td>{item.category}</td><td><a className="title-button" href={`#${route.tab}/${item.id}`}>{item.title}</a></td><td>{formatDate(item.createdAt)}</td></tr>):<tr><td colSpan={4} className="empty-row">등록된 글이 없습니다.</td></tr>}</tbody></table></div><div className="pagination">{Array.from({length:pageCount},(_,index)=><button key={index} className={page===index+1?"active":""} onClick={()=>setPage(index+1)}>{index+1}</button>)}</div></>}
 

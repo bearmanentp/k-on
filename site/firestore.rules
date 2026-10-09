@@ -78,6 +78,9 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid == uid;
       allow read: if has('users');
     }
+    match /nicknameClaims/{key} {
+      allow read, write: if false;
+    }
     match /pointHistory/{id} {
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('users') || has('points'));
       allow write: if false;
@@ -94,6 +97,29 @@ service cloud.firestore {
     match /products/{id} {
       allow read: if resource.data.active == true || has('design');
       allow create, update, delete: if has('design') || has('notices');
+    }
+    match /shopSettings/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('design');
+    }
+    match /orders/{id} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'awaiting_transfer';
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('applications'));
+      allow update: if (has('applications') && (
+          !(request.resource.data.status in ['payment_rejected_refund_pending', 'refund_rejected'])
+          || (request.resource.data.adminRefundReason is string && request.resource.data.adminRefundReason.size() > 0)
+        )) || (signedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paymentReportedAt', 'buyerRefundReason', 'refundRequestedAt', 'updatedAt'])
+        && ((resource.data.status == 'awaiting_transfer' && request.resource.data.status in ['payment_reported', 'canceled'])
+          || (resource.data.status in ['payment_reported', 'payment_confirmed'] && request.resource.data.status == 'refund_requested')));
+      allow delete: if has('applications');
+    }
+    match /pollVotes/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
     }
     match /adminDirectory/{uid} {
       allow read: if signedIn() && request.auth.token.role == 'owner';
