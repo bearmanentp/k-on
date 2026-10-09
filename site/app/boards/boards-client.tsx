@@ -49,7 +49,7 @@ export default function BoardsPage(){
   const [route,setRoute]=useState<RouteState>({tab:"news"});
   const [news,setNews]=useState<Post[]>([]),[notices,setNotices]=useState<Post[]>([]),[extraBoards,setExtraBoards]=useState<Record<string,Post[]>>({}),[inquiries,setInquiries]=useState<Inquiry[]>([]),[savedInquiryCategories,setSavedInquiryCategories]=useState<InquiryCategory[]>([]),[categoriesInitialized,setCategoriesInitialized]=useState(false),[boardDefinitions,setBoardDefinitions]=useState<BoardDefinition[]>(BOARD_DEFINITIONS);
   const [user,setUser]=useState<User|null>(null),[role,setRole]=useState(""),[permissions,setPermissions]=useState<Permission[]>([]);
-  const [logoUrl,setLogoUrl]=useState(LOGO),[siteName,setSiteName]=useState("K-ON! FANDOM KR"),[accent,setAccent]=useState("#ff4f6d");
+  const [logoUrl,setLogoUrl]=useState(LOGO),[siteName,setSiteName]=useState("K-ON! FANDOM KR"),[accent,setAccent]=useState("#ff4f6d"),[fontFamily,setFontFamily]=useState('"Pretendard", "Noto Sans KR", system-ui, sans-serif');
   const [authMode,setAuthMode]=useState<"login"|"register">("login"),[toast,setToast]=useState(""),[page,setPage]=useState(1),[termsAccepted,setTermsAccepted]=useState(false),[privacyAccepted,setPrivacyAccepted]=useState(false),[authNotice,setAuthNotice]=useState("");
   const isAdmin=role==="owner"||permissions.includes("applications");
 
@@ -58,7 +58,7 @@ export default function BoardsPage(){
     if(!firebaseConfigured||!auth||!db)return;
     const firestore=db;
     const ua=onAuthStateChanged(auth,async next=>{setUser(next);if(!next){setRole("");setPermissions([]);return;}const access=await readAdminAccess(next,firestore);setRole(access.role);setPermissions(access.permissions as Permission[]);});
-    const us=onSnapshot(doc(db,"siteSettings","main"),snap=>{if(!snap.exists())return;const data=snap.data();setLogoUrl(String(data.logoUrl||LOGO));setSiteName(String(data.siteName||"K-ON! FANDOM KR"));setAccent(String(data.accentColor||"#ff4f6d"));});
+    const us=onSnapshot(doc(db,"siteSettings","main"),snap=>{if(!snap.exists())return;const data=snap.data();setLogoUrl(String(data.logoUrl||LOGO));setSiteName(String(data.siteName||"K-ON! FANDOM KR"));setAccent(String(data.accentColor||"#ff4f6d"));setFontFamily(String(data.fontFamily||'"Pretendard", "Noto Sans KR", system-ui, sans-serif'));});
     const un=onSnapshot(query(collection(db,"news"),orderBy("createdAt","desc")),snap=>setNews(snap.docs.map(item=>({id:item.id,...item.data()} as Post))));
     const uo=onSnapshot(query(collection(db,"notices"),orderBy("createdAt","desc")),snap=>setNotices(snap.docs.map(item=>({id:item.id,...item.data()} as Post))));
     const uc=onSnapshot(collection(db,"inquiryCategories"),snap=>{const list=snap.docs.map(item=>({id:item.id,...item.data()} as InquiryCategory)).filter(item=>item.active!==false).sort((a,b)=>(a.order??0)-(b.order??0));setSavedInquiryCategories(list);});
@@ -128,7 +128,7 @@ export default function BoardsPage(){
 
   const currentBoard=boardByKey[route.tab]||BOARD_BY_KEY.news;
   const CurrentIcon=currentBoard.icon;
-  return <main className="boards-page" style={{"--accent":accent} as CSSProperties}>
+  return <main className="boards-page" style={{"--accent":accent,fontFamily} as CSSProperties}>
     <PublicHeader siteName={siteName} logoUrl={logoUrl} active="boards" boards={boardDefinitions}/>
     {!firebaseConfigured&&<div className="setup-banner">미리보기 모드 · Firebase 연결 후 로그인과 문의 기능이 활성화됩니다.</div>}
     {toast&&<button className="toast" onClick={()=>setToast("")}>{toast}</button>}

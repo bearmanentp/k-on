@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { onAuthStateChanged, updateProfile, User } from "firebase/auth";
@@ -33,7 +33,7 @@ export default function MyPage(){
   const [messages,setMessages]=useState<AccountMessage[]>([]);
   const [saving,setSaving]=useState(false);
   const [notice,setNotice]=useState("");
-  const [siteName,setSiteName]=useState("K-ON! FANDOM KR"),[logoUrl,setLogoUrl]=useState(LOGO);
+  const [siteName,setSiteName]=useState("K-ON! FANDOM KR"),[logoUrl,setLogoUrl]=useState(LOGO),[fontFamily,setFontFamily]=useState('"Pretendard", "Noto Sans KR", system-ui, sans-serif');
 
   useEffect(()=>{
     if(!auth)return;
@@ -46,7 +46,7 @@ export default function MyPage(){
     const stopMessages=onSnapshot(query(collection(db,"accountMessages"),where("userId","==",user.uid)),snapshot=>setMessages(snapshot.docs.map(item=>({id:item.id,...item.data()}) as AccountMessage)));
     return()=>{stopProfile();stopReservations();stopMessages();};
   },[user]);
-  useEffect(()=>{if(!db)return;return onSnapshot(doc(db,"siteSettings","main"),snapshot=>{if(!snapshot.exists())return;setSiteName(String(snapshot.data().siteName||"K-ON! FANDOM KR"));setLogoUrl(String(snapshot.data().logoUrl||LOGO));});},[]);
+  useEffect(()=>{if(!db)return;return onSnapshot(doc(db,"siteSettings","main"),snapshot=>{if(!snapshot.exists())return;setSiteName(String(snapshot.data().siteName||"K-ON! FANDOM KR"));setLogoUrl(String(snapshot.data().logoUrl||LOGO));setFontFamily(String(snapshot.data().fontFamily||'"Pretendard", "Noto Sans KR", system-ui, sans-serif'));});},[]);
 
   const sortedReservations=useMemo(()=>[...reservations].sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))),[reservations]);
   const sortedMessages=useMemo(()=>[...messages].sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))),[messages]);
@@ -71,9 +71,9 @@ export default function MyPage(){
   const siteFooter=<footer className="site-footer"><div className="brand"><Image src={logoUrl} alt="" width={124} height={44} unoptimized/><span>{siteName}</span></div><p>팬덤 작성 콘텐츠는 각 작성자에게 권리가 있으며, K-ON! 원작·상표·캐릭터의 권리는 각 권리자에게 있습니다. 비영리 비공식 팬 커뮤니티입니다.</p></footer>;
 
   if(!authReady)return <main className="mypage-loading">마이페이지를 불러오는 중입니다.</main>;
-  if(!user)return <main className="mypage-page"><PublicHeader siteName={siteName} logoUrl={logoUrl} active="mypage"/><section className="mypage-login-card"><CircleUserRound/><small>MEMBER ONLY</small><h1>로그인 후 이용해 주세요</h1><p>프로필 등록과 예약 내역, 회원 쪽지를 한곳에서 확인할 수 있습니다.</p><Button asChild><Link href="/">홈에서 로그인하기</Link></Button></section>{siteFooter}</main>;
+  if(!user)return <main className="mypage-page" style={{fontFamily} as CSSProperties}><PublicHeader siteName={siteName} logoUrl={logoUrl} active="mypage"/><section className="mypage-login-card"><CircleUserRound/><small>MEMBER ONLY</small><h1>로그인 후 이용해 주세요</h1><p>프로필 등록과 예약 내역, 회원 쪽지를 한곳에서 확인할 수 있습니다.</p><Button asChild><Link href="/">홈에서 로그인하기</Link></Button></section>{siteFooter}</main>;
 
-  return <main className="mypage-page">
+  return <main className="mypage-page" style={{fontFamily} as CSSProperties}>
     <PublicHeader siteName={siteName} logoUrl={logoUrl} active="mypage"/>
     <header className="mypage-hero"><div className="mypage-avatar" aria-hidden="true">{(nickname||user.email||"K").slice(0,1).toUpperCase()}</div><div className="mypage-identity"><small>MY FAN PROFILE</small><h1>{nickname||"프로필을 등록해 주세요"}</h1><p>{user.email}</p></div><div className="mypage-stats" aria-label="회원 활동 요약"><div><strong>{Number(profile.points||0).toLocaleString()}P</strong><span>보유 포인트</span></div><div><strong>{reservations.length}</strong><span>예약</span></div><div><strong>{unreadCount}</strong><span>읽지 않은 쪽지</span></div></div></header>
     <div className="mypage-grid">

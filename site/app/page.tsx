@@ -787,6 +787,7 @@ export default function Home() {
         {
           "--accent": site.accentColor,
           "--site-font": site.fontFamily,
+          fontFamily: site.fontFamily,
         } as CSSProperties
       }
     >
