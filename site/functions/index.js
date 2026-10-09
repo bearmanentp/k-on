@@ -22,6 +22,61 @@ function canManageDesign(request) {
   return request.auth && (request.auth.token.role === "owner" || (Array.isArray(request.auth.token.permissions) && request.auth.token.permissions.includes("design")));
 }
 
+async function canManageUsers(request) {
+  if (!request.auth) return false;
+  if (request.auth.token.role === "owner") return true;
+  if (Array.isArray(request.auth.token.permissions) && request.auth.token.permissions.includes("users")) return true;
+  const firestore = getFirestore();
+  const email = String(request.auth.token.email || "").trim().toLowerCase();
+  const references = [firestore.doc(`adminDirectory/${request.auth.uid}`)];
+  if (email) references.push(firestore.doc(`adminDirectory/${email}`));
+  const snapshots = await firestore.getAll(...references);
+  return snapshots.some(snapshot => {
+    const entry = snapshot.data() || {};
+    return entry.active === true && (entry.role === "owner" || (Array.isArray(entry.permissions) && entry.permissions.includes("users")));
+  });
+}
+
+// Firebase Authentication accounts created before the Firestore member directory
+// existed are backfilled when an authorized administrator opens the member list.
+// Existing profile/point fields are deliberately left untouched.
+export const syncAuthUsers = onCall({ timeoutSeconds: 120, memory: "256MiB" }, async request => {
+  if (!await canManageUsers(request)) throw new HttpsError("permission-denied", "회원 목록을 동기화할 권한이 없습니다.");
+  const firestore = getFirestore();
+  let pageToken;
+  let scanned = 0;
+  let created = 0;
+  do {
+    const page = await getAuth().listUsers(1000, pageToken);
+    scanned += page.users.length;
+    const references = page.users.map(user => firestore.doc(`users/${user.uid}`));
+    const existing = references.length ? await firestore.getAll(...references) : [];
+    const missing = page.users.filter((_, index) => !existing[index].exists);
+    for (let offset = 0; offset < missing.length; offset += 500) {
+      const batch = firestore.batch();
+      for (const user of missing.slice(offset, offset + 500)) {
+        const joinedAt = user.metadata.creationTime || new Date().toISOString();
+        batch.create(firestore.doc(`users/${user.uid}`), {
+          email: String(user.email || "").trim().toLowerCase(),
+          nickname: user.displayName || "",
+          photoURL: user.photoURL || "",
+          joinedAt,
+          lastSignInAt: user.metadata.lastSignInTime || joinedAt,
+          disabled: user.disabled,
+          providers: user.providerData.map(provider => provider.providerId),
+          points: 0,
+          migratedFromAuth: true,
+          migratedAt: new Date().toISOString(),
+        });
+      }
+      await batch.commit();
+      created += Math.min(500, missing.length - offset);
+    }
+    pageToken = page.pageToken;
+  } while (pageToken);
+  return { scanned, created };
+});
+
 export const setImageHostingKey = onCall(async request => {
   if (!canManageDesign(request)) throw new HttpsError("permission-denied", "이미지 호스팅 설정 권한이 없습니다.");
   const apiKey = String(request.data?.apiKey || "").trim();

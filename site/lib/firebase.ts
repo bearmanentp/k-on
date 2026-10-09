@@ -3,6 +3,7 @@ import { getAuth } from "firebase/auth";
 import { getFirestore, initializeFirestore, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getMessaging, isSupported } from "firebase/messaging";
+import { getFunctions } from "firebase/functions";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -29,6 +30,7 @@ function initializeSiteFirestore(){
 }
 export const db = initializeSiteFirestore();
 export const storage = app ? getStorage(app) : null;
+export const functions = app ? getFunctions(app) : null;
 export const messagingPromise = app
   ? isSupported().then(ok => ok ? getMessaging(app) : null)
   : Promise.resolve(null);
