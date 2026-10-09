@@ -103,7 +103,11 @@ service cloud.firestore {
       allow read: if has('applications') || has('events');
     }
     match /products/{id} {
-      allow read: if resource.data.active == true || has('design');
+      allow read: if resource.data.active == true || has('design') || has('notices');
+      allow create, update, delete: if has('design') || has('notices');
+    }
+    match /shops/{id} {
+      allow read: if resource.data.active == true || has('design') || has('notices');
       allow create, update, delete: if has('design') || has('notices');
     }
     match /shopSettings/{id} {

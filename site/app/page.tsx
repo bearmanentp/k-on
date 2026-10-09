@@ -68,6 +68,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SiteHub } from "@/components/site/site-hub";
 import { BOARD_DEFINITIONS } from "@/lib/board-config";
 import { AccountMenu } from "@/app/components/account-menu";
+import { FormRichTextEditor } from "@/app/components/form-rich-text-editor";
 import {
   authErrorMessage,
   loginWithEmail,
@@ -636,6 +637,7 @@ export default function Home() {
       place: String(f.get("place")),
       summary: String(f.get("summary")),
       capacity: Number(f.get("capacity")),
+      bookingType: "general",
       status: "open",
       formSchema,
       createdAt: new Date().toISOString(),
@@ -672,9 +674,12 @@ export default function Home() {
     e.preventDefault();
     if (!db || !can("notices")) return;
     const f = new FormData(e.currentTarget);
+    const bodyRich=String(f.get("bodyRich")||"");
+    if(!String(f.get("body")||"").trim())return setToast("본문 내용을 입력해 주세요.");
     await addDoc(collection(db, kind), {
       title: String(f.get("title")),
       body: String(f.get("body")),
+      bodyRich:bodyRich?JSON.parse(bodyRich):null,
       category: String(f.get("category")),
       pinned: f.get("pinned") === "on",
       createdAt: new Date().toISOString(),
@@ -711,9 +716,12 @@ export default function Home() {
     e.preventDefault();
     if (!db || !can("users")) return;
     const f = new FormData(e.currentTarget);
+    const bodyRich=String(f.get("bodyRich")||"");
+    if(!String(f.get("body")||"").trim())return setToast("공지 내용을 입력해 주세요.");
     await addDoc(collection(db, "adminNotices"), {
       title: String(f.get("title")),
       body: String(f.get("body")),
+      bodyRich:bodyRich?JSON.parse(bodyRich):null,
       audiences: [String(f.get("audience"))],
       createdAt: new Date().toISOString(),
     });
@@ -1659,7 +1667,7 @@ function AdminDialog(p: AdminProps) {
                 </label>
                 <label>
                   내용
-                  <Textarea name="body" required />
+                  <FormRichTextEditor label="내용" />
                 </label>
                 <Button>등록</Button>
               </form>
@@ -1813,7 +1821,7 @@ function AdminDialog(p: AdminProps) {
                 <h3>공지 작성</h3>
                 <Input name="category" placeholder="분류" required />
                 <Input name="title" placeholder="제목" required />
-                <Textarea name="body" placeholder="내용" required />
+                <FormRichTextEditor label="본문" />
                 <label className="check-line">
                   <input name="pinned" type="checkbox" />
                   필독
@@ -1827,7 +1835,7 @@ function AdminDialog(p: AdminProps) {
                 <h3>소식 작성</h3>
                 <Input name="category" placeholder="분류" required />
                 <Input name="title" placeholder="제목" required />
-                <Textarea name="body" placeholder="내용" required />
+                <FormRichTextEditor label="본문" />
                 <Button>소식 등록</Button>
               </form>
             </div>

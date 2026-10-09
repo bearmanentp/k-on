@@ -14,6 +14,7 @@ import {
   Edit,
   EditButton,
   EmailField,
+  FormDataConsumer,
   List,
   NumberField,
   NumberInput,
@@ -38,6 +39,7 @@ import {
   Megaphone,
   Newspaper,
   ShieldCheck,
+  Store,
   Ticket,
 } from "lucide-react";
 import { HashRouter } from "react-router-dom";
@@ -223,10 +225,7 @@ function EventForm() {
         <SelectInput source="bookingType" label="예매 방식" choices={[{id:"general",name:"일반 신청"},{id:"assigned_seat",name:"지정 좌석 예매"}]} />
         <NumberInput source="capacity" label="정원" min={1} />
         <NumberInput source="price" label="티켓 가격" min={0} helperText="무료 행사는 0원으로 입력하세요." />
-        <NumberInput source="seatRows" label="좌석 행 수" min={0} helperText="지정 좌석 예매일 때만 사용합니다. A행부터 자동 생성됩니다." />
-        <NumberInput source="seatsPerRow" label="행당 좌석 수" min={0} helperText="예: 8행 × 12석" />
-        <TextInput source="blockedSeats" label="사용하지 않는 좌석" fullWidth helperText="A1, A2처럼 쉼표로 구분하세요." format={(value:unknown)=>Array.isArray(value)?value.join(", "):String(value||"")} parse={(value:string)=>value.split(",").map(item=>item.trim().toUpperCase()).filter(Boolean)} />
-        <SeatLayoutInput source="seatLayout" />
+        <FormDataConsumer>{({formData})=>formData.bookingType==="assigned_seat"?<><NumberInput source="seatRows" label="좌석 행 수" min={0} helperText="A행부터 자동 생성됩니다."/><NumberInput source="seatsPerRow" label="행당 좌석 수" min={0} helperText="예: 8행 × 12석"/><TextInput source="blockedSeats" label="사용하지 않는 좌석" fullWidth helperText="A1, A2처럼 쉼표로 구분하세요." format={(value:unknown)=>Array.isArray(value)?value.join(", "):String(value||"")} parse={(value:string)=>value.split(",").map(item=>item.trim().toUpperCase()).filter(Boolean)}/><SeatLayoutInput source="seatLayout"/></>:null}</FormDataConsumer>
         <TextInput source="summary" label="소개" multiline rows={4} fullWidth />
         <TextInput source="imageUrl" label="행사 이미지 URL" fullWidth />
         <TextInput source="formSchema" label="신청 질문" multiline rows={8} fullWidth format={formatEventQuestions} parse={parseEventQuestions} helperText="질문 | 형태 | required/optional | 선택지 형식으로 한 줄씩 입력하세요." />
@@ -393,7 +392,7 @@ function AdminNoticeList(){
   return <List filters={searchFilters} sort={{field:"createdAt",order:"DESC"}}><Datagrid rowClick="edit"><TextField source="audiences" label="대상"/><TextField source="title" label="제목"/><DateField source="createdAt" label="작성일" showTime/><EditButton/><DeleteButton/></Datagrid></List>;
 }
 function AdminNoticeForm(){
-  return <SimpleForm><TextInput source="audiences" label="대상 권한" validate={required()} fullWidth helperText="all, design, events, notices, applications, users 중 쉼표로 구분" format={(value:unknown)=>Array.isArray(value)?value.join(", "):String(value||"")} parse={(value:string)=>value.split(",").map(item=>item.trim()).filter(Boolean)}/><TextInput source="title" label="제목" validate={required()} fullWidth/><TextInput source="body" label="내용" validate={required()} multiline rows={7} fullWidth/></SimpleForm>;
+  return <SimpleForm><TextInput source="audiences" label="대상 권한" validate={required()} fullWidth helperText="all, design, events, notices, applications, users 중 쉼표로 구분" format={(value:unknown)=>Array.isArray(value)?value.join(", "):String(value||"")} parse={(value:string)=>value.split(",").map(item=>item.trim()).filter(Boolean)}/><TextInput source="title" label="제목" validate={required()} fullWidth/><RichTextInput label="내용"/></SimpleForm>;
 }
 function AdminNoticeCreate(){return <Create><AdminNoticeForm/></Create>}
 function AdminNoticeEdit(){return <Edit><AdminNoticeForm/></Edit>}
@@ -437,17 +436,18 @@ function AdList() {
 }
 function AdForm() {
   return (
-    <SimpleForm>
+    <SimpleForm defaultValues={{active:true,slot:"after-hub",label:"PARTNER"}}>
       <BooleanInput source="active" label="광고 노출" />
       <SelectInput
         source="slot"
         label="노출 위치"
+        validate={required()}
         choices={[
           { id: "after-hub", name: "둘러보기 다음" },
           { id: "after-community", name: "커뮤니티 다음" },
         ]}
       />
-      <TextInput source="label" label="작은 라벨" defaultValue="PARTNER" />
+      <TextInput source="label" label="작은 라벨" />
       <TextInput
         source="title"
         label="광고 제목"
@@ -489,6 +489,7 @@ function ProductList() {
     <List sort={{ field: "createdAt", order: "DESC" }}>
       <Datagrid rowClick="edit">
         <BooleanField source="active" label="판매" />
+        <TextField source="shopId" label="상점" />
         <TextField source="name" label="상품명" />
         <NumberField source="price" label="가격" />
         <EditButton />
@@ -497,9 +498,11 @@ function ProductList() {
     </List>
   );
 }
+function ProductShopSelect(){const {data=[],isPending}=useGetList("shops",{pagination:{page:1,perPage:100},sort:{field:"order",order:"ASC"}});return <SelectInput source="shopId" label="판매 상점" choices={data.map(shop=>({id:String(shop.id),name:String(shop.name||shop.id)}))} defaultValue="official" validate={required()} isPending={isPending} fullWidth/>;}
 function ProductForm() {
   return (
-    <SimpleForm>
+    <SimpleForm defaultValues={{active:true,shopId:"official"}}>
+      <ProductShopSelect />
       <BooleanInput source="active" label="판매 노출" defaultValue={true} />
       <TextInput source="name" label="상품명" validate={required()} fullWidth />
       <TextInput
@@ -546,6 +549,10 @@ function ProductCreate() {
     </Create>
   );
 }
+function ShopList(){return <List sort={{field:"order",order:"ASC"}} pagination={false}><Datagrid rowClick="edit"><BooleanField source="active" label="노출"/><TextField source="name" label="상점명"/><TextField source="description" label="소개"/><TextField source="bankName" label="은행"/><NumberField source="order" label="순서"/><EditButton/><DeleteButton/></Datagrid></List>}
+function ShopForm(){return <SimpleForm defaultValues={{active:true,order:10}}><BooleanInput source="active" label="상점 노출"/><TextInput source="name" label="상점명" validate={required()} fullWidth/><TextInput source="description" label="상점 소개" multiline rows={3} fullWidth/><TextInput source="imageUrl" label="상점 대표 이미지 URL" fullWidth/><NumberInput source="order" label="노출 순서" min={0}/><TextInput source="bankName" label="은행명"/><TextInput source="accountNumber" label="계좌번호" fullWidth/><TextInput source="accountHolder" label="예금주"/></SimpleForm>}
+function ShopCreate(){return <Create><ShopForm/></Create>}
+function ShopEdit(){return <Edit><ShopForm/></Edit>}
 type SiteDesignState={siteName:string;logoUrl:string;fontFamily:string;accentColor:string;heroEyebrow:string;heroTitle:string;heroDescription:string;heroImages:string;characterImages:string;communityMessage:string};
 const DEFAULT_SITE_DESIGN:SiteDesignState={siteName:"K-ON! FANDOM KR",logoUrl:"",fontFamily:'"Pretendard", "Noto Sans KR", system-ui, sans-serif',accentColor:"#ff4f6d",heroEyebrow:"AFTER SCHOOL, TOGETHER",heroTitle:"좋아하는 음악으로\n다시 만나는 우리",heroDescription:"",heroImages:"/hero-music-room.png",characterImages:"",communityMessage:""};
 function SiteSettingsList() {
@@ -803,6 +810,14 @@ export default function AdminApp() {
           list={BoardPostList}
           edit={BoardPostEdit}
           create={BoardPostCreate}
+        />
+        <Resource
+          name="shops"
+          options={{ label: "상점 관리" }}
+          icon={Store}
+          list={ShopList}
+          edit={ShopEdit}
+          create={ShopCreate}
         />
         <Resource
           name="products"
