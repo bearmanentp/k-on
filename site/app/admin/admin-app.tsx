@@ -415,7 +415,7 @@ function AdminList() {
   );
 }
 function MemberList(){
-  return <List filters={searchFilters} sort={{field:"nicknameChangedAt",order:"DESC"}}><Datagrid><EmailField source="email" label="이메일"/><TextField source="nickname" label="닉네임"/><NumberField source="points" label="포인트"/><DateField source="nicknameChangedAt" label="프로필 변경" showTime/></Datagrid></List>;
+  return <List filters={searchFilters} sort={{field:"joinedAt",order:"DESC"}}><Datagrid><TextField source="id" label="UID"/><EmailField source="email" label="이메일"/><TextField source="nickname" label="닉네임" emptyText="미등록"/><NumberField source="memberNumber" label="가입 순번"/><NumberField source="points" label="포인트" emptyText="0"/><DateField source="joinedAt" label="가입일" showTime/><DateField source="nicknameChangedAt" label="프로필 변경" showTime/></Datagrid></List>;
 }
 function PointHistoryList(){
   return <List filters={searchFilters} sort={{field:"createdAt",order:"DESC"}}><Datagrid><EmailField source="userEmail" label="회원"/><NumberField source="delta" label="변동"/><NumberField source="balance" label="잔액"/><TextField source="reason" label="사유"/><DateField source="createdAt" label="처리일" showTime/></Datagrid></List>;

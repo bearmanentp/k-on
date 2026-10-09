@@ -141,7 +141,8 @@ export const firebaseDataProvider:DataProvider = {
   async getList(resource,params){
     const source=collection(requireDb(),resource),filters=params.filter||{},hasClientFilter=Object.values(filters).some(Boolean);
     const pagination=params.pagination||{page:1,perPage:25},start=(pagination.page-1)*pagination.perPage;
-    const serverPaged=!hasClientFilter&&!['products','shops','siteSettings'].includes(resource);
+    // 예전 회원 문서에는 정렬 필드가 없을 수 있어 users는 전체를 읽고 클라이언트에서 정렬합니다.
+    const serverPaged=!hasClientFilter&&!['products','shops','siteSettings','users'].includes(resource);
     const constraints=[];
     if(serverPaged&&params.sort?.field)constraints.push(orderBy(params.sort.field,params.sort.order==="DESC"?"desc":"asc"));
     if(serverPaged)constraints.push(firestoreLimit(pagination.page*pagination.perPage));
