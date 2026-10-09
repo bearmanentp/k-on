@@ -38,9 +38,9 @@ export const firebaseDataProvider:DataProvider = {
 };
 
 export const firebaseAuthProvider:AuthProvider = {
-  async login({username,password}){if(!auth)throw new Error("Firebase가 연결되지 않았습니다.");const credential=await signInWithEmailAndPassword(auth,username,password);const token=await credential.user.getIdTokenResult(true);if(token.claims.role!=="owner"&&!Array.isArray(token.claims.permissions)){await signOut(auth);throw new Error("관리자 권한이 없습니다.");}},
+  async login({username,password}){if(!auth)throw new Error("Firebase가 연결되지 않았습니다.");const credential=await signInWithEmailAndPassword(auth,username,password);const token=await credential.user.getIdTokenResult(true);if(token.claims.role!=="owner"&&(!Array.isArray(token.claims.permissions)||token.claims.permissions.length===0)){await signOut(auth);throw new Error("관리자 권한이 없습니다.");}},
   async logout(){if(auth)await signOut(auth);},
-  async checkAuth(){const user=auth?.currentUser||await waitForUser();if(!user)throw new Error("로그인이 필요합니다.");const token=await user.getIdTokenResult();if(token.claims.role!=="owner"&&!Array.isArray(token.claims.permissions))throw new Error("관리자 권한이 없습니다.");},
+  async checkAuth(){const user=auth?.currentUser||await waitForUser();if(!user)throw new Error("로그인이 필요합니다.");const token=await user.getIdTokenResult();if(token.claims.role!=="owner"&&(!Array.isArray(token.claims.permissions)||token.claims.permissions.length===0))throw new Error("관리자 권한이 없습니다.");},
   async checkError(){},
   async getIdentity(){const user=auth?.currentUser||await waitForUser();if(!user)throw new Error("로그인이 필요합니다.");return{id:user.uid,fullName:user.email||"관리자"};},
   async getPermissions(){const user=auth?.currentUser||await waitForUser();if(!user)return[];const token=await user.getIdTokenResult();if(token.claims.role==="owner")return["owner"];const permissions=Array.isArray(token.claims.permissions)?token.claims.permissions:[];return token.claims.role==="deputy"?["deputy",...permissions]:permissions;},

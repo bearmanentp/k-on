@@ -19,7 +19,7 @@ import { authErrorMessage, loginWithEmail, loginWithGoogle, registerWithEmail } 
 
 type BoardTab = BoardKey;
 type Permission = "design" | "events" | "notices" | "applications" | "users" | "points";
-type Post = { id:string; title:string; body:string; bodyRich?:unknown; category:string; createdAt:string; pinned?:boolean };
+type Post = { id:string; title:string; body:string; bodyRich?:unknown; prefix?:string; category:string; createdAt:string; pinned?:boolean };
 type Inquiry = { id:string; userId:string; userEmail:string; title:string; body:string; category:string; createdAt:string; status:"waiting"|"answered"; answer?:string; private?:boolean };
 type InquiryCategory = { id:string; label:string; description?:string; active?:boolean; order?:number };
 type RouteState = { tab:BoardTab; itemId?:string; compose?:boolean };
@@ -115,7 +115,7 @@ export default function BoardsPage(){
     <section className="board-page-content">
       <div className="board-page-heading"><div><small>{route.tab.toUpperCase()}</small><h2><CurrentIcon/>{boardByKey[route.tab].label} 게시판</h2><p>{boardByKey[route.tab].description}</p></div>{route.tab==="inquiries"&&user&&!route.compose&&<a className="board-link-button" href="#inquiries/new"><PenLine/>문의 작성</a>}</div>
 
-      {route.tab!=="inquiries"&&route.itemId&&<article className="board-article"><a className="back-link" href={`#${route.tab}`}><ArrowLeft/>목록으로</a>{selectedPost?<><div className="article-meta"><span>{selectedPost.category}</span><time>{formatDate(selectedPost.createdAt)}</time></div><h2>{selectedPost.title}</h2><div className="article-body">{postBody(selectedPost)}</div></>:<div className="board-empty">글을 찾을 수 없습니다.</div>}</article>}
+      {route.tab!=="inquiries"&&route.itemId&&<article className="board-article"><a className="back-link" href={`#${route.tab}`}><ArrowLeft/>목록으로</a>{selectedPost?<><div className="article-meta">{selectedPost.prefix&&<span>{selectedPost.prefix}</span>}<span>{selectedPost.category}</span><time>{formatDate(selectedPost.createdAt)}</time></div><h2>{selectedPost.title}</h2><div className="article-body">{postBody(selectedPost)}</div></>:<div className="board-empty">글을 찾을 수 없습니다.</div>}</article>}
 
       {route.tab!=="inquiries"&&!route.itemId&&<><div className="table-wrap board-table"><table><thead><tr><th>번호</th><th>분류</th><th>제목</th><th>작성일</th></tr></thead><tbody>{pageItems.length?pageItems.map((item,index)=><tr key={item.id}><td>{item.pinned?"필독":posts.length-((page-1)*pageSize+index)}</td><td>{item.category}</td><td><a className="title-button" href={`#${route.tab}/${item.id}`}>{item.title}</a></td><td>{formatDate(item.createdAt)}</td></tr>):<tr><td colSpan={4} className="empty-row">등록된 글이 없습니다.</td></tr>}</tbody></table></div><div className="pagination">{Array.from({length:pageCount},(_,index)=><button key={index} className={page===index+1?"active":""} onClick={()=>setPage(index+1)}>{index+1}</button>)}</div></>}
 

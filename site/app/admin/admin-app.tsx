@@ -38,7 +38,7 @@ const adminTheme = {
 };
 
 function PostList(){return <List filters={searchFilters} sort={{field:"createdAt",order:"DESC"}}><Datagrid rowClick="edit"><BooleanField source="pinned" label="필독"/><TextField source="category" label="분류"/><TextField source="title" label="제목"/><DateField source="createdAt" label="작성일"/><EditButton/><DeleteButton/></Datagrid></List>;}
-function PostForm(){return <SimpleForm><TextInput source="category" label="분류" validate={required()} fullWidth/><TextInput source="title" label="제목" validate={required()} fullWidth/><BooleanInput source="pinned" label="필독 고정"/><RichTextInput/></SimpleForm>;}
+function PostForm(){return <SimpleForm><TextInput source="prefix" label="말머리" helperText="예: [공지], [질문], [행사]"/><TextInput source="category" label="분류" validate={required()} fullWidth/><TextInput source="title" label="제목" validate={required()} fullWidth/><BooleanInput source="pinned" label="필독 고정"/><RichTextInput/></SimpleForm>;}
 function NoticeEdit(){return <Edit><PostForm/></Edit>;}
 function NoticeCreate(){return <Create><PostForm/></Create>;}
 function NewsEdit(){return <Edit><PostForm/></Edit>;}
