@@ -6,6 +6,32 @@ service cloud.firestore {
       return signedIn() && (
         request.auth.token.role == 'owner'
         || (request.auth.token.permissions is list && permission in request.auth.token.permissions)
+        || (
+          request.auth.token.email is string
+          && get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.active == true
+          && get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.permissions is list
+          && permission in get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.permissions
+        )
+      );
+    }
+    function isDeputy() {
+      return signedIn() && (
+        request.auth.token.role == 'deputy'
+        || (
+          request.auth.token.email is string
+          && get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.active == true
+          && get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.role == 'deputy'
+        )
+      );
+    }
+    function isAdmin() {
+      return signedIn() && (
+        request.auth.token.role == 'owner'
+        || request.auth.token.permissions is list
+        || (
+          request.auth.token.email is string
+          && get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.active == true
+        )
       );
     }
     function isAssignedShopManager(shopId) {
@@ -20,6 +46,80 @@ service cloud.firestore {
     function managesShop(shopId) {
       return has('design') || isAssignedShopManager(shopId);
     }
+    function validNicknameProfile(uid, data) {
+      return data.nickname is string
+        && data.nickname.size() >= 2
+        && data.nickname.size() <= 20
+        && data.nicknameKey is string
+        && data.nicknameKey.size() > 0
+        && data.nicknameChangedAt == request.time
+        && getAfter(/databases/$(database)/documents/nicknameClaims/$(data.nicknameKey)).data.uid == uid
+        && getAfter(/databases/$(database)/documents/nicknameClaims/$(data.nicknameKey)).data.nickname == data.nickname;
+    }
+    function pointConfig() {
+      return exists(/databases/$(database)/documents/pointSettings/main)
+        ? get(/databases/$(database)/documents/pointSettings/main).data
+        : {'enabled': true, 'signupPoints': 100, 'noticeReadPoints': 5, 'referralInviterPoints': 100, 'referralInviteePoints': 50, 'memberMilestoneEvery': 100, 'memberMilestonePoints': 500, 'eventEnabled': false};
+    }
+    function pointEventActive() {
+      let settings = pointConfig();
+      return settings.get('eventEnabled', false) == true
+        && settings.get('eventStartAtMs', 0) <= request.time.toMillis()
+        && request.time.toMillis() <= settings.get('eventEndAtMs', 0);
+    }
+    function configuredPoint(regularKey, eventKey, fallback) {
+      let settings = pointConfig();
+      return settings.get('enabled', true) == true
+        ? (pointEventActive() ? settings.get(eventKey, 0) : settings.get(regularKey, fallback))
+        : 0;
+    }
+    function expectedSignupPoints(memberNumber) {
+      let settings = pointConfig();
+      let every = settings.get('memberMilestoneEvery', 100);
+      let milestone = every > 0 && memberNumber % every == 0
+        ? configuredPoint('memberMilestonePoints', 'eventMemberMilestonePoints', 500)
+        : 0;
+      return configuredPoint('signupPoints', 'eventSignupPoints', 100) + milestone;
+    }
+    function validPointBalance(uid, data) {
+      return data.points is number
+        && data.points >= 0
+        && data.lastPointLedgerId is string
+        && getAfter(/databases/$(database)/documents/pointLedger/$(data.lastPointLedgerId)).data.userId == uid
+        && getAfter(/databases/$(database)/documents/pointLedger/$(data.lastPointLedgerId)).data.balance == data.points
+        && getAfter(/databases/$(database)/documents/pointLedger/$(data.lastPointLedgerId)).data.createdAtServer == request.time;
+    }
+    function validPointLedger(id) {
+      let data = request.resource.data;
+      return signedIn()
+        && data.delta is number
+        && data.delta >= 0
+        && data.balance is number
+        && data.createdAtServer == request.time
+        && (
+          (data.kind == 'signup' && data.userId == request.auth.uid && id == 'signup_' + request.auth.uid && data.sourceId == request.auth.uid && data.delta == expectedSignupPoints(data.memberNumber) && getAfter(/databases/$(database)/documents/systemCounters/members).data.memberCount == data.memberNumber)
+          || (data.kind == 'notice_read' && data.userId == request.auth.uid && id == 'notice_' + data.sourceId + '_' + request.auth.uid && exists(/databases/$(database)/documents/notices/$(data.sourceId)) && data.delta == configuredPoint('noticeReadPoints', 'eventNoticeReadPoints', 5))
+          || (data.kind == 'referral_invitee' && data.userId == request.auth.uid && id == 'referral_' + request.auth.uid + '_invitee' && getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.inviterUid == data.sourceId && data.delta == configuredPoint('referralInviteePoints', 'eventReferralInviteePoints', 50))
+          || (data.kind == 'referral_inviter' && id == 'referral_' + request.auth.uid + '_inviter' && data.sourceId == request.auth.uid && getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.inviterUid == data.userId && data.delta == configuredPoint('referralInviterPoints', 'eventReferralInviterPoints', 100))
+          || (data.kind == 'purchase' && (has('points') || has('applications')) && id == 'order_' + data.sourceId)
+        );
+    }
+    function validReservation(id) {
+      let data = request.resource.data;
+      let event = get(/databases/$(database)/documents/events/$(data.eventId)).data;
+      return signedIn()
+        && id == data.eventId + '__' + request.auth.uid
+        && data.userId == request.auth.uid
+        && data.userEmail == request.auth.token.email
+        && data.status == 'received'
+        && data.createdAtServer == request.time
+        && data.keys().hasOnly(['userId','userEmail','eventId','eventTitle','answers','seatLabel','bookingType','amount','createdAt','createdAtServer','status'])
+        && event.status == 'open'
+        && data.eventTitle == event.title
+        && data.bookingType == event.bookingType
+        && ((event.bookingType == 'assigned_seat' && data.seatLabel is string && data.seatLabel.size() > 0)
+          || (event.bookingType != 'assigned_seat' && data.seatLabel == null));
+    }
     match /siteSettings/{id} {
       allow read: if true;
       allow write: if has('design');
@@ -33,7 +133,32 @@ service cloud.firestore {
 
       match /seats/{seatId} {
         allow read: if true;
-        allow write: if false;
+        allow create: if signedIn()
+          && get(/databases/$(database)/documents/events/$(id)).data.bookingType == 'assigned_seat'
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.eventId == id
+          && request.resource.data.seatLabel == seatId
+          && request.resource.data.reservationId == id + '__' + request.auth.uid
+          && getAfter(/databases/$(database)/documents/reservations/$(request.resource.data.reservationId)).data.userId == request.auth.uid
+          && getAfter(/databases/$(database)/documents/reservations/$(request.resource.data.reservationId)).data.seatLabel == seatId;
+        allow update: if false;
+        allow delete: if has('applications') || has('events');
+      }
+      match /reservationMeta/{metaId} {
+        allow read: if true;
+        allow create: if signedIn()
+          && metaId == 'counter'
+          && request.resource.data.activeCount == 1
+          && request.resource.data.activeCount <= get(/databases/$(database)/documents/events/$(id)).data.capacity
+          && getAfter(/databases/$(database)/documents/reservations/$(id + '__' + request.auth.uid)).data.createdAtServer == request.time;
+        allow update: if (signedIn()
+          && metaId == 'counter'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeCount','updatedAt'])
+          && request.resource.data.activeCount == resource.data.activeCount + 1
+          && request.resource.data.activeCount <= get(/databases/$(database)/documents/events/$(id)).data.capacity
+          && getAfter(/databases/$(database)/documents/reservations/$(id + '__' + request.auth.uid)).data.createdAtServer == request.time)
+          || has('applications') || has('events');
+        allow delete: if has('applications') || has('events');
       }
     }
     match /seatLayouts/{id} {
@@ -69,7 +194,12 @@ service cloud.firestore {
       allow read: if signedIn() && (
         request.auth.token.role == 'owner'
         || resource.data.audiences.hasAny(['all', request.auth.token.role])
-        || resource.data.audiences.hasAny(request.auth.token.permissions)
+        || (request.auth.token.permissions is list && resource.data.audiences.hasAny(request.auth.token.permissions))
+        || (
+          request.auth.token.email is string
+          && get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.permissions is list
+          && resource.data.audiences.hasAny(get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.permissions)
+        )
       );
       allow create, update, delete: if has('users');
     }
@@ -85,28 +215,111 @@ service cloud.firestore {
       allow create, update, delete: if has('applications');
     }
     match /reservations/{id} {
-      // 예약 생성은 좌석·정원 중복 검사를 수행하는 reserveEvent callable만 담당합니다.
-      allow create: if false;
+      allow create: if validReservation(id);
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('applications') || has('events'));
-      allow update, delete: if has('applications') || has('events');
+      allow update: if (validReservation(id) && resource.data.userId == request.auth.uid && resource.data.status == 'canceled')
+        || has('applications') || has('events');
+      allow delete: if has('applications') || has('events');
     }
     match /users/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow create: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['email', 'fcmTokens'])
-        && request.resource.data.email == request.auth.token.email;
-      allow update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'fcmTokens', 'nickname', 'deletedAt'])
-        && request.resource.data.email == request.auth.token.email;
+        && request.resource.data.keys().hasOnly(['email', 'fcmTokens', 'nickname', 'nicknameKey', 'nicknameChangedAt', 'referralCode', 'points', 'pointsUpdatedAt', 'lastPointLedgerId', 'memberNumber', 'joinedAt'])
+        && request.resource.data.email == request.auth.token.email
+        && (!('nickname' in request.resource.data) || validNicknameProfile(uid, request.resource.data))
+        && (!('points' in request.resource.data) || validPointBalance(uid, request.resource.data));
+      allow update: if (signedIn() && request.auth.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'fcmTokens', 'deletedAt'])
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'nickname', 'nicknameKey', 'nicknameChangedAt'])
+            && validNicknameProfile(uid, request.resource.data)
+            && (!('nicknameChangedAt' in resource.data)
+              || !(resource.data.nicknameChangedAt is timestamp)
+              || request.time - resource.data.nicknameChangedAt >= duration.value(30, 'd'))
+          )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'pointsUpdatedAt', 'lastPointLedgerId'])
+            && validPointBalance(uid, request.resource.data)
+          )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'nickname', 'nicknameKey', 'nicknameChangedAt', 'referralCode', 'points', 'pointsUpdatedAt', 'lastPointLedgerId', 'memberNumber', 'joinedAt'])
+            && validNicknameProfile(uid, request.resource.data)
+            && validPointBalance(uid, request.resource.data)
+          )
+        ))
+        || (has('points')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'pointsUpdatedAt'])
+          && request.resource.data.points is number
+          && request.resource.data.points >= 0)
+        || ((has('applications') || has('points'))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'pointsUpdatedAt', 'lastPointLedgerId'])
+          && validPointBalance(uid, request.resource.data))
+        || (signedIn()
+          && getAfter(/databases/$(database)/documents/referrals/$(request.auth.uid)).data.inviterUid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'pointsUpdatedAt', 'lastPointLedgerId'])
+          && validPointBalance(uid, request.resource.data));
       allow delete: if signedIn() && request.auth.uid == uid;
-      allow read: if has('users');
+      allow read: if has('users') || has('points');
     }
     match /nicknameClaims/{key} {
-      allow read, write: if false;
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid','nickname','key','updatedAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.key == key
+        && request.resource.data.updatedAt == request.time;
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.key == key
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
     match /pointHistory/{id} {
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('users') || has('points'));
-      allow write: if false;
+      allow create: if has('points')
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.delta is number
+        && request.resource.data.balance is number
+        || (signedIn()
+          && getAfter(/databases/$(database)/documents/pointLedger/$(id)).data.userId == request.resource.data.userId
+          && getAfter(/databases/$(database)/documents/pointLedger/$(id)).data.delta == request.resource.data.delta
+          && getAfter(/databases/$(database)/documents/pointLedger/$(id)).data.balance == request.resource.data.balance
+          && getAfter(/databases/$(database)/documents/pointLedger/$(id)).data.createdAtServer == request.time);
+      allow update, delete: if false;
+    }
+    match /pointSettings/{id} {
+      allow read: if signedIn();
+      allow create, update, delete: if has('points') || has('design');
+    }
+    match /pointLedger/{id} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('points') || has('users'));
+      allow create: if validPointLedger(id);
+      allow update, delete: if false;
+    }
+    match /systemCounters/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && id == 'members'
+        && request.resource.data.memberCount == 1
+        && getAfter(/databases/$(database)/documents/pointLedger/$(('signup_' + request.auth.uid))).data.createdAtServer == request.time;
+      allow update: if signedIn() && id == 'members'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount','updatedAt'])
+        && request.resource.data.memberCount == resource.data.memberCount + 1
+        && getAfter(/databases/$(database)/documents/pointLedger/$(('signup_' + request.auth.uid))).data.memberNumber == request.resource.data.memberCount
+        && getAfter(/databases/$(database)/documents/pointLedger/$(('signup_' + request.auth.uid))).data.createdAtServer == request.time;
+      allow delete: if false;
+    }
+    match /referralCodes/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.code == code && request.resource.data.createdAtServer == request.time;
+      allow update, delete: if false;
+    }
+    match /referrals/{inviteeUid} {
+      allow read: if signedIn() && (inviteeUid == request.auth.uid || resource.data.inviterUid == request.auth.uid || has('points'));
+      allow create: if signedIn() && inviteeUid == request.auth.uid && request.resource.data.inviteeUid == request.auth.uid && request.resource.data.inviterUid != request.auth.uid && request.resource.data.createdAtServer == request.time;
+      allow update, delete: if false;
     }
     match /accountMessages/{id} {
       allow read: if signedIn() && resource.data.userId == request.auth.uid;
@@ -118,7 +331,7 @@ service cloud.firestore {
       allow read: if has('applications') || has('events');
     }
     match /products/{id} {
-      allow read: if resource.data.active == true || (signedIn() && (request.auth.token.role == 'owner' || request.auth.token.permissions is list));
+      allow read: if resource.data.active == true || isAdmin();
       allow create: if request.resource.data.shopId is string && managesShop(request.resource.data.shopId);
       // 디자인 담당자는 shopId가 없던 기존 상품도 정리할 수 있습니다.
       // 상점 담당자는 배정된 상점 안에서만 생성·수정·삭제할 수 있습니다.
@@ -159,9 +372,13 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if false;
     }
-    match /adminDirectory/{uid} {
-      allow read: if signedIn() && request.auth.token.role == 'owner';
-      allow write: if false;
+    match /adminDirectory/{email} {
+      allow read: if signedIn() && (request.auth.token.email == email || request.auth.token.role == 'owner' || isDeputy());
+      allow create, update: if signedIn() && (
+        request.auth.token.role == 'owner'
+        || (isDeputy() && request.resource.data.role == 'manager')
+      );
+      allow delete: if signedIn() && (request.auth.token.role == 'owner' || isDeputy());
     }
     match /adminAlerts/{id} {
       allow read: if has('design') || has('events') || has('notices') || has('applications') || has('users') || has('points');

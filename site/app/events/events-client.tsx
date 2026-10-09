@@ -3,15 +3,15 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { collection, doc, onSnapshot, orderBy, query, where } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { Armchair, ArrowLeft, CalendarDays, Check, CircleUserRound, Clock3, MapPin, Users } from "lucide-react";
-import { auth, db, firebaseConfigured, functions } from "@/lib/firebase";
+import { auth, db, firebaseConfigured } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { authErrorMessage, loginWithEmail, loginWithGoogle } from "@/lib/auth";
 import { PublicHeader } from "@/app/components/public-header";
+import { reserveEventInFirestore } from "@/lib/reservations";
 
 type FormField={id:string;label:string;type:"text"|"email"|"tel"|"textarea"|"select"|"radio"|"checkbox";required:boolean;options?:string[]};
 type SeatCell={id:string;label:string;row:number;column:number;kind:"seat"|"blocked"|"aisle";x?:number;y?:number;rotation?:number};
@@ -43,7 +43,7 @@ export default function EventsClient(){
   const selectedLayout=useMemo(()=>selected?seatRows(selected):[],[selected]);
   async function eventLogin(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!auth)return;const data=new FormData(e.currentTarget);try{await loginWithEmail(auth,String(data.get("email")),String(data.get("password")));setToast("로그인했습니다.");}catch(error){setToast(authErrorMessage(error));}}
   async function eventGoogleLogin(){if(!auth)return;try{await loginWithGoogle(auth);setToast("Google 계정으로 로그인했습니다.");}catch(error){setToast(authErrorMessage(error));}}
-  async function reserve(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!selected)return;if(!user){setToast("예약하려면 먼저 로그인해 주세요.");return}if(!functions)return setToast("예약 서버에 연결할 수 없습니다.");if(selected.bookingType==="assigned_seat"&&!selectedSeat)return setToast("좌석을 먼저 선택해 주세요.");const form=new FormData(e.currentTarget);const answers=Object.fromEntries((selected.formSchema||[]).map(field=>[field.id,String(form.get(field.id)||"")]));setSubmitting(true);try{const call=httpsCallable<{eventId:string;seatLabel?:string;answers:Record<string,string>},{reservationId:string;seatLabel?:string}>(functions,"reserveEvent");const result=await call({eventId:selected.id,seatLabel:selectedSeat||undefined,answers});setSelected(null);setSelectedSeat("");setToast(result.data.seatLabel?`${result.data.seatLabel} 좌석 예매가 접수되었습니다.`:"예약이 접수되었습니다. 내 예약에서 상태를 확인하세요.");}catch(error){setToast(authErrorMessage(error));}finally{setSubmitting(false);}}
+  async function reserve(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!selected)return;if(!user){setToast("예약하려면 먼저 로그인해 주세요.");return}if(!db)return setToast("예약 데이터베이스에 연결할 수 없습니다.");if(selected.bookingType==="assigned_seat"&&!selectedSeat)return setToast("좌석을 먼저 선택해 주세요.");const form=new FormData(e.currentTarget);const answers=Object.fromEntries((selected.formSchema||[]).map(field=>[field.id,String(form.get(field.id)||"")]));setSubmitting(true);try{const result=await reserveEventInFirestore(db,user,selected.id,answers,selectedSeat||undefined);setSelected(null);setSelectedSeat("");setToast(result.seatLabel?`${result.seatLabel} 좌석 예매가 접수되었습니다.`:"예약이 접수되었습니다. 내 예약에서 상태를 확인하세요.");}catch(error){setToast(authErrorMessage(error));}finally{setSubmitting(false);}}
   function field(question:FormField){if(question.type==="textarea")return <Textarea name={question.id} required={question.required}/>;if(question.type==="select"||question.type==="radio")return <select name={question.id} required={question.required}><option value="">선택해 주세요</option>{question.options?.map(option=><option key={option}>{option}</option>)}</select>;return <Input name={question.id} type={question.type} required={question.required}/>;}
   return <main className="events-page" style={{"--accent":"#e85f7d"} as CSSProperties}><PublicHeader siteName={siteName} logoUrl={logo} active="events"/>
     <section className="events-hero"><div><Link href="/"><ArrowLeft/>홈으로 돌아가기</Link><p>AFTER SCHOOL EVENT</p><h1>행사·예약</h1><span>좋아하는 음악과 사람을 만나는 시간을 신청하세요.</span></div></section>

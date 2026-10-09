@@ -17,7 +17,6 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import {
   deleteUser,
   onAuthStateChanged,
@@ -26,7 +25,6 @@ import {
   User,
 } from "firebase/auth";
 import { getToken } from "firebase/messaging";
-import { httpsCallable } from "firebase/functions";
 import {
   Bell,
   CalendarDays,
@@ -50,9 +48,7 @@ import {
   auth,
   db,
   firebaseConfigured,
-  functions,
   messagingPromise,
-  storage,
 } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,10 +67,13 @@ import { AccountMenu } from "@/app/components/account-menu";
 import { FormRichTextEditor } from "@/app/components/form-rich-text-editor";
 import {
   authErrorMessage,
+  claimNickname,
   loginWithEmail,
   loginWithGoogle,
   registerWithEmail,
 } from "@/lib/auth";
+import { reserveEventInFirestore } from "@/lib/reservations";
+import { readAdminAccess } from "@/lib/admin-access";
 
 type Permission =
   | "design"
@@ -313,16 +312,13 @@ export default function Home() {
   }, [heroImages.length]);
   useEffect(() => {
     if (!firebaseConfigured || !auth || !db) return;
+    const firestore = db;
     const ua = onAuthStateChanged(auth, async (next) => {
       setUser(next);
       if (!next) setMessages([]);
-      const token = next ? await next.getIdTokenResult(true) : null;
-      setRole(String(token?.claims.role || ""));
-      setPermissions(
-        Array.isArray(token?.claims.permissions)
-          ? (token.claims.permissions as Permission[])
-          : [],
-      );
+      const access = next ? await readAdminAccess(next, firestore) : null;
+      setRole(access?.role || "");
+      setPermissions((access?.permissions || []) as Permission[]);
     });
     const us = onSnapshot(
       doc(db, "siteSettings", "main"),
@@ -440,8 +436,8 @@ export default function Home() {
     const f = new FormData(e.currentTarget);
     try {
       if (authMode === "register") {
-        if (!functions)
-          return setToast("Firebase Functions 연결 후 회원가입할 수 있습니다.");
+        if (!db)
+          return setToast("Firebase 데이터베이스 연결 후 회원가입할 수 있습니다.");
         if (f.get("terms") !== "on" || f.get("privacy") !== "on")
           return setAuthNotice(
             "이용약관과 개인정보 처리방침에 모두 동의해 주세요.",
@@ -454,10 +450,11 @@ export default function Home() {
         if (!requestedNickname) return setAuthNotice("닉네임을 입력해 주세요.");
         await registerWithEmail(
           auth,
-          functions,
+          db,
           String(f.get("email")),
           String(f.get("password")),
           requestedNickname,
+          String(f.get("referralCode") || ""),
         );
         setAuthOpen(false);
         setToast("인증 메일을 보냈습니다. 이메일 인증 후 로그인해 주세요.");
@@ -523,16 +520,12 @@ export default function Home() {
   }
   async function saveProfile(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!user || !functions) return;
+    if (!user || !db) return;
     const value = String(
       new FormData(e.currentTarget).get("nickname") || "",
     ).trim();
     try {
-      const call = httpsCallable<{ nickname: string }, { nickname: string }>(
-        functions,
-        "setNickname",
-      );
-      await call({ nickname: value });
+      await claimNickname(db, user, value, String(new FormData(e.currentTarget).get("referralCode") || ""));
       await updateProfile(user, { displayName: value });
       setNickname(value);
       setProfileOpen(false);
@@ -563,32 +556,15 @@ export default function Home() {
       );
     }
   }
-  async function upload(file: File, folder: string) {
-    if (!storage || !file.size) return "";
-    const target = ref(
-      storage,
-      `site/${folder}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`,
-    );
-    await uploadBytes(target, file, { contentType: file.type });
-    return getDownloadURL(target);
-  }
   async function saveSite(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!db || !can("design")) return;
     const f = new FormData(e.currentTarget);
-    const uploaded = await Promise.all(
-      Array.from(f.getAll("heroFiles"))
-        .filter((v) => v instanceof File && (v as File).size)
-        .map((v) => upload(v as File, "hero")),
-    );
     const urls = String(f.get("heroImages"))
       .split("\n")
       .map(directImageUrl)
       .filter(Boolean);
-    const logoFile = f.get("logoFile") as File;
-    const logo = logoFile?.size
-      ? await upload(logoFile, "logo")
-      : directImageUrl(String(f.get("logoUrl")));
+    const logo = directImageUrl(String(f.get("logoUrl")));
     const characterImages = String(f.get("characterImages"))
       .split("\n")
       .map((line) => {
@@ -596,7 +572,7 @@ export default function Home() {
         return { name, url: directImageUrl(url || ""), source };
       })
       .filter((x) => x.name && x.url);
-    const hero = [...uploaded, ...urls];
+    const hero = urls;
     if (!hero.length) return setToast("히어로 이미지는 최소 1장이 필요합니다.");
     await setDoc(
       doc(db, "siteSettings", "main"),
@@ -653,14 +629,13 @@ export default function Home() {
         setAuthOpen(true),
         setToast("예약하려면 로그인해 주세요.")
       );
-    if (!functions || !reserveEvent) return;
+    if (!db || !reserveEvent) return;
     const f = new FormData(e.currentTarget);
     const answers = Object.fromEntries(
       reserveEvent.formSchema.map((q) => [q.id, String(f.get(q.id) || "")]),
     );
     try {
-      const call = httpsCallable(functions, "reserveEvent");
-      await call({ eventId: reserveEvent.id, answers });
+      await reserveEventInFirestore(db, user, reserveEvent.id, answers);
       setReserveEvent(null);
       setToast("예약이 접수되었습니다. 알림을 켜면 진행 상태를 받을 수 있습니다.");
     } catch (error) {
@@ -752,20 +727,24 @@ export default function Home() {
   }
   async function manageAdmin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!functions || !isOwner) return;
+    if (!db || !user || !isOwner) return;
     const form = new FormData(e.currentTarget);
     const permissions = form.getAll("permissions").map(String) as Permission[];
     try {
-      const call = httpsCallable<
-        { email: string; permissions: Permission[] },
-        { active: boolean }
-      >(functions, "manageAdminPermissions");
-      const result = await call({
-        email: String(form.get("email")),
+      const email = String(form.get("email") || "").trim().toLowerCase();
+      if (!email) return setToast("관리자 이메일을 입력해 주세요.");
+      const target = doc(db, "adminDirectory", email);
+      if (permissions.length) await setDoc(target, {
+        email,
+        role: "manager",
         permissions,
-      });
+        active: true,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.uid,
+      }, { merge: true });
+      else await deleteDoc(target);
       setToast(
-        result.data.active
+        permissions.length
           ? "관리자 권한을 저장했습니다. 대상자는 다시 로그인하면 적용됩니다."
           : "관리자 권한을 모두 해제했습니다.",
       );
@@ -1260,6 +1239,10 @@ export default function Home() {
               placeholder="비밀번호 (6자 이상)"
               required
             />
+            {authMode === "register" && <>
+              <Input name="nickname" minLength={2} maxLength={20} placeholder="닉네임 (2~20자)" required />
+              <Input name="referralCode" placeholder="친구 추천 코드 (선택)" />
+            </>}
             <div className="auth-consents">
               <label>
                 <input
@@ -1328,6 +1311,7 @@ export default function Home() {
                 maxLength={20}
                 required
               />
+              {!nickname && <Input name="referralCode" placeholder="친구 추천 코드 (선택)" />}
             </label>
             <Button>닉네임 저장</Button>
           </form>
@@ -1691,18 +1675,8 @@ function AdminDialog(p: AdminProps) {
               </label>
               <label>
                 로고 URL
-                <Input name="logoUrl" defaultValue={p.site.logoUrl} />
-                <small>
-                  외부 이미지 URL이나 Google Drive 링크를 우선 사용하세요.
-                </small>
-              </label>
-              <label>
-                로고 파일
-                <Input name="logoFile" type="file" accept="image/*" />
-                <small>
-                  Firebase 저장공간을 사용하므로 꼭 필요한 경우에만
-                  업로드하세요.
-                </small>
+                <Input name="logoUrl" type="url" defaultValue={p.site.logoUrl} placeholder="https://..." />
+                <small>외부에 올린 이미지의 직접 링크를 입력하세요.</small>
               </label>
               <label>
                 히어로 작은 문구
@@ -1733,16 +1707,8 @@ function AdminDialog(p: AdminProps) {
                   defaultValue={p.site.heroImages.join("\n")}
                 />
                 <small>
-                  외부 URL 또는 Google Drive 링크를 한 줄에 하나씩 입력하세요.
+                  외부 이미지의 직접 URL을 한 줄에 하나씩 입력하세요.
                   최소 1장, 2장부터 자동 슬라이드됩니다.
-                </small>
-              </label>
-              <label>
-                히어로 파일 업로드
-                <Input name="heroFiles" type="file" accept="image/*" multiple />
-                <small>
-                  URL을 사용할 수 없을 때만 사용하세요. 파일마다 Firebase
-                  Storage 용량을 차지합니다.
                 </small>
               </label>
               <label className="full">
@@ -1758,7 +1724,7 @@ function AdminDialog(p: AdminProps) {
                 />
                 <small>
                   이름 | 이미지 URL | 출처 URL 형식, 한 줄에 한 명. 외부 URL
-                  사용을 권장합니다.
+                  을 입력하세요.
                 </small>
               </label>
               <Button className="full">

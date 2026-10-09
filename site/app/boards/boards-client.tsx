@@ -8,7 +8,7 @@ import Link from "next/link";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { addDoc, collection, doc, onSnapshot, orderBy, query, updateDoc, where } from "firebase/firestore";
 import { ArrowLeft, CircleUserRound, Home, LogOut, MessageSquareText, Newspaper, PenLine } from "lucide-react";
-import { auth, db, firebaseConfigured, functions } from "@/lib/firebase";
+import { auth, db, firebaseConfigured } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { generateHTML } from "@tiptap/core";
@@ -19,6 +19,8 @@ import { BOARD_BY_KEY, BOARD_DEFINITIONS, type BoardDefinition, type BoardKey } 
 import { authErrorMessage, loginWithEmail, loginWithGoogle, registerWithEmail } from "@/lib/auth";
 import { PublicHeader } from "@/app/components/public-header";
 import { FormRichTextEditor } from "@/app/components/form-rich-text-editor";
+import { readAdminAccess } from "@/lib/admin-access";
+import { awardNoticeRead } from "@/lib/points";
 
 type BoardTab = BoardKey;
 type Permission = "design" | "events" | "notices" | "applications" | "users" | "points";
@@ -53,7 +55,8 @@ export default function BoardsPage(){
   useEffect(()=>{const sync=()=>{setRoute(readRoute());setPage(1);window.scrollTo({top:0,behavior:"smooth"});};const frame=requestAnimationFrame(sync);window.addEventListener("hashchange",sync);return()=>{cancelAnimationFrame(frame);window.removeEventListener("hashchange",sync);};},[]);
   useEffect(()=>{
     if(!firebaseConfigured||!auth||!db)return;
-    const ua=onAuthStateChanged(auth,async next=>{setUser(next);const token=next?await next.getIdTokenResult(true):null;setRole(String(token?.claims.role||""));setPermissions(Array.isArray(token?.claims.permissions)?token.claims.permissions as Permission[]:[]);});
+    const firestore=db;
+    const ua=onAuthStateChanged(auth,async next=>{setUser(next);if(!next){setRole("");setPermissions([]);return;}const access=await readAdminAccess(next,firestore);setRole(access.role);setPermissions(access.permissions as Permission[]);});
     const us=onSnapshot(doc(db,"siteSettings","main"),snap=>{if(!snap.exists())return;const data=snap.data();setLogoUrl(String(data.logoUrl||LOGO));setSiteName(String(data.siteName||"K-ON! FANDOM KR"));setAccent(String(data.accentColor||"#ff4f6d"));});
     const un=onSnapshot(query(collection(db,"news"),orderBy("createdAt","desc")),snap=>setNews(snap.docs.map(item=>({id:item.id,...item.data()} as Post))));
     const uo=onSnapshot(query(collection(db,"notices"),orderBy("createdAt","desc")),snap=>setNotices(snap.docs.map(item=>({id:item.id,...item.data()} as Post))));
@@ -82,13 +85,14 @@ export default function BoardsPage(){
   const pageSize=10;
   const pageItems=useMemo(()=>posts.slice((page-1)*pageSize,page*pageSize),[posts,page]);
   const pageCount=Math.max(1,Math.ceil(posts.length/pageSize));
+  useEffect(()=>{if(!db||!user||route.tab!=="notices"||!selectedPost)return;void awardNoticeRead(db,user,selectedPost.id,selectedPost.title).catch(()=>undefined);},[user,route.tab,selectedPost]);
 
   async function memberAuth(e:FormEvent<HTMLFormElement>){
     e.preventDefault();
     if(!auth)return setToast("Firebase 연결 후 로그인할 수 있습니다.");
     const form=new FormData(e.currentTarget);
     try{
-      if(authMode==="register"){if(!termsAccepted||!privacyAccepted)return setAuthNotice("이용약관과 개인정보 처리방침에 모두 동의해 주세요.");if(!functions)return setAuthNotice("Firebase Functions 연결 후 회원가입할 수 있습니다.");const requestedNickname=String(window.prompt("가입에 사용할 닉네임을 입력해 주세요.")||"").trim();if(!requestedNickname)return setAuthNotice("닉네임을 입력해 주세요.");await registerWithEmail(auth,functions,String(form.get("email")),String(form.get("password")),requestedNickname);setToast("인증 메일을 보냈습니다. 이메일 인증 후 로그인해 주세요.");}
+      if(authMode==="register"){if(!termsAccepted||!privacyAccepted)return setAuthNotice("이용약관과 개인정보 처리방침에 모두 동의해 주세요.");if(!db)return setAuthNotice("Firebase 데이터베이스 연결 후 회원가입할 수 있습니다.");const requestedNickname=String(form.get("nickname")||window.prompt("가입에 사용할 닉네임을 입력해 주세요.")||"").trim();if(!requestedNickname)return setAuthNotice("닉네임을 입력해 주세요.");await registerWithEmail(auth,db,String(form.get("email")),String(form.get("password")),requestedNickname,String(form.get("referralCode")||""));setToast("인증 메일을 보냈습니다. 이메일 인증 후 로그인해 주세요.");}
       else {await loginWithEmail(auth,String(form.get("email")),String(form.get("password")));setToast("로그인했습니다.");}
     }catch(error){setAuthNotice("");setToast(authErrorMessage(error));}
   }
@@ -132,7 +136,7 @@ export default function BoardsPage(){
 
       {route.tab==="inquiries"&&!user&&<div className="board-auth"><MessageSquareText/><div><h3>로그인이 필요한 게시판입니다</h3><p>본인이 작성한 문의와 관리자 답변만 안전하게 확인할 수 있습니다.</p></div><form onSubmit={memberAuth}><Input name="email" type="email" placeholder="이메일" required/><Input name="password" type="password" minLength={6} placeholder="비밀번호 (6자 이상)" required/><div className="auth-consents"><label><input type="checkbox" checked={termsAccepted} onChange={e=>setTermsAccepted(e.target.checked)} required={authMode==="register"}/> <a href="/terms" target="_blank" rel="noreferrer">이용약관</a> 동의</label><label><input type="checkbox" checked={privacyAccepted} onChange={e=>setPrivacyAccepted(e.target.checked)} required={authMode==="register"}/> <a href="/privacy" target="_blank" rel="noreferrer">개인정보 처리방침</a> 동의</label></div>{authNotice&&<p className="auth-notice">{authNotice}</p>}<Button>{authMode==="login"?"이메일 로그인":"이메일 회원가입"}</Button></form><div className="auth-divider"><span>또는</span></div><Button type="button" variant="outline" onClick={googleAuth}>Google 계정으로 계속하기</Button><button className="text-link" onClick={()=>{setAuthMode(authMode==="login"?"register":"login");setAuthNotice("")}}>{authMode==="login"?"계정이 없나요? 회원가입":"이미 계정이 있나요? 로그인"}</button></div>}
 
-      {route.tab==="inquiries"&&user&&route.compose&&<article className="board-editor"><a className="back-link" href="#inquiries"><ArrowLeft/>목록으로</a><h2>새 문의 작성</h2><p>본문 이미지는 편집기의 `본문 이미지` 버튼에 직접 이미지 URL을 넣고, 일반 파일은 아래 첨부 링크로 등록하세요.</p><form className="form" onSubmit={createInquiry}><label>분류<select name="category">{inquiryCategories.map(category=><option key={category.id} value={category.label}>{category.label}</option>)}</select></label><label>제목<Input name="title" required/></label><FormRichTextEditor label="문의 내용"/><label>첨부 이름<Input name="attachmentName" placeholder="예: 행사 신청서.pdf"/></label><label>첨부 링크<Input name="attachmentUrl" type="url" placeholder="Google Drive, OneDrive 또는 외부 파일 링크"/></label><small className="attachment-guide">파일 자체 대신 공유 링크 등록을 권장합니다. 링크의 공개 범위를 반드시 확인하세요.</small><label className="check-line"><input name="private" type="checkbox"/> 비공개 문의로 등록</label><Button>문의 등록</Button></form></article>}
+      {route.tab==="inquiries"&&user&&route.compose&&<article className="board-editor"><a className="back-link" href="#inquiries"><ArrowLeft/>목록으로</a><h2>새 문의 작성</h2><p>본문 이미지는 편집기의 ‘이미지 URL’ 버튼으로 넣고, 일반 파일은 아래 첨부 링크로 등록하세요.</p><form className="form" onSubmit={createInquiry}><label>분류<select name="category">{inquiryCategories.map(category=><option key={category.id} value={category.label}>{category.label}</option>)}</select></label><label>제목<Input name="title" required/></label><FormRichTextEditor label="문의 내용"/><label>첨부 이름<Input name="attachmentName" placeholder="예: 행사 신청서.pdf"/></label><label>첨부 링크<Input name="attachmentUrl" type="url" placeholder="Google Drive, OneDrive 또는 외부 파일 링크"/></label><small className="attachment-guide">파일 자체 대신 공유 링크를 등록하세요. 링크의 공개 범위를 반드시 확인해야 합니다.</small><label className="check-line"><input name="private" type="checkbox"/> 비공개 문의로 등록</label><Button>문의 등록</Button></form></article>}
 
       {route.tab==="inquiries"&&user&&route.itemId&&!route.compose&&<article className="board-article"><a className="back-link" href="#inquiries"><ArrowLeft/>목록으로</a>{selectedInquiry?<><div className="article-meta"><span>{selectedInquiry.category}</span><span className={`status-pill ${selectedInquiry.status}`}>{selectedInquiry.status==="answered"?"답변 완료":"답변 대기"}</span><time>{formatDate(selectedInquiry.createdAt)}</time></div><h2>{selectedInquiry.title}</h2><div className="article-body">{richBody(selectedInquiry.body,selectedInquiry.bodyRich)}</div>{selectedInquiry.attachmentUrl&&<a className="file-attachment" href={directFileUrl(selectedInquiry.attachmentUrl)} target="_blank" rel="noreferrer">📎 {selectedInquiry.attachmentName||"첨부 링크 열기"}</a>}{selectedInquiry.answer&&<div className="board-answer"><b>관리자 답변</b>{richBody(selectedInquiry.answer,selectedInquiry.answerRich)}</div>}{isAdmin&&!selectedInquiry.answer&&<form className="form answer-form" onSubmit={answerInquiry}><FormRichTextEditor label="관리자 답변" name="answer" richName="answerRich"/><Button>답변 등록</Button></form>}</>:<div className="board-empty">문의 글을 찾을 수 없거나 열람 권한이 없습니다.</div>}</article>}
 

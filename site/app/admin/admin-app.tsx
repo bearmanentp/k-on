@@ -2,7 +2,6 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
 import {
   Admin,
   BooleanField,
@@ -55,7 +54,8 @@ import {
 import { RichTextInput } from "./rich-text-input";
 import { AdminDashboard } from "./dashboard";
 import { SeatLayoutInput } from "./seat-layout-input";
-import { db, functions } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
+import { DEFAULT_POINT_SETTINGS, type PointSettings } from "@/lib/points";
 
 const searchFilters = [<TextInput key="q" source="q" label="검색" alwaysOn />];
 
@@ -464,8 +464,8 @@ function AdForm() {
       />
       <TextInput
         source="imageUrl"
-        label="이미지 URL (권장)"
-        helperText="Firebase Storage 대신 외부 이미지 링크 사용을 권장합니다."
+        label="이미지 URL"
+        helperText="외부에 올린 이미지의 직접 링크를 입력하세요."
         fullWidth
       />
     </SimpleForm>
@@ -504,7 +504,7 @@ function ProductForm() {
   const location=useLocation();
   const lockedShopId=new URLSearchParams(location.search).get("shopId")||"";
   return (
-    <SimpleForm defaultValues={{active:true,...(lockedShopId?{shopId:lockedShopId}:{})}}>
+    <SimpleForm defaultValues={{active:true,rewardMode:"default",rewardPoints:0,...(lockedShopId?{shopId:lockedShopId}:{})}}>
       <ProductShopSelect lockedShopId={lockedShopId} />
       <BooleanInput source="active" label="판매 노출" defaultValue={true} />
       <TextInput source="name" label="상품명" validate={required()} fullWidth />
@@ -516,6 +516,8 @@ function ProductForm() {
         fullWidth
       />
       <NumberInput source="price" label="가격" min={0} />
+      <SelectInput source="rewardMode" label="구매 포인트" choices={[{id:"default",name:"관리자 가격별 기본 설정"},{id:"fixed",name:"상품별 고정 포인트"},{id:"none",name:"포인트 미지급"}]} />
+      <FormDataConsumer>{({formData})=>formData.rewardMode==="fixed"?<NumberInput source="rewardPoints" label="상품 구매 완료 지급 포인트" min={0}/>:null}</FormDataConsumer>
       <TextInput source="imageUrl" label="이미지 URL" fullWidth />
       <TextInput source="bankName" label="상품별 은행명" helperText="입력하면 이 상품 주문에만 적용됩니다." fullWidth />
       <TextInput source="accountNumber" label="상품별 계좌번호" helperText="비워 두면 상점 공통 입금 계좌를 사용합니다." fullWidth />
@@ -534,7 +536,7 @@ function OrderList() {
   return <List filters={searchFilters} sort={{ field: "createdAt", order: "DESC" }}><Datagrid rowClick="edit"><EmailField source="userEmail" label="구매자" /><TextField source="productName" label="상품" /><NumberField source="amount" label="금액" /><TextField source="depositorName" label="입금자명" /><TextField source="status" label="상태" /><DateField source="createdAt" label="주문일" showTime /><EditButton /></Datagrid></List>;
 }
 function OrderEdit() {
-  return <Edit><SimpleForm><TextInput source="userEmail" label="구매자" disabled fullWidth /><TextInput source="productName" label="상품" disabled fullWidth /><NumberInput source="amount" label="금액" disabled /><TextInput source="depositorName" label="입금자명" disabled /><SelectInput source="status" label="처리 상태" choices={[{ id: "awaiting_transfer", name: "입금 대기" }, { id: "payment_reported", name: "입금 확인 중" }, { id: "payment_confirmed", name: "결제 승인" }, { id: "payment_rejected_refund_pending", name: "입금 거절 · 환불 예정" }, { id: "refund_requested", name: "환불 신청 검토 중" }, { id: "refund_rejected", name: "환불 신청 거절" }, { id: "refund_approved", name: "환불 진행 중" }, { id: "refunded", name: "환불 완료" }, { id: "canceled", name: "주문 취소" }]} /><TextInput source="buyerRefundReason" label="구매자 환불 신청 사유" disabled multiline rows={3} fullWidth /><TextInput source="adminRefundReason" label="관리자 처리/거절 사유" multiline rows={4} fullWidth helperText="입금 거절 또는 구매자 환불 신청 거절 시 반드시 사유를 작성하세요." /></SimpleForm></Edit>;
+  return <Edit><SimpleForm><TextInput source="userEmail" label="구매자" disabled fullWidth /><TextInput source="productName" label="상품" disabled fullWidth /><NumberInput source="amount" label="금액" disabled /><TextInput source="depositorName" label="입금자명" disabled /><SelectInput source="status" label="처리 상태" choices={[{ id: "awaiting_transfer", name: "입금 대기" }, { id: "payment_reported", name: "입금 확인 중" }, { id: "payment_confirmed", name: "결제 승인" }, { id: "fulfilling", name: "상품 전달 중" }, { id: "delivered", name: "상품 전달 완료 · 포인트 확정" }, { id: "payment_rejected_refund_pending", name: "입금 거절 · 환불 예정" }, { id: "refund_requested", name: "환불 신청 검토 중" }, { id: "refund_rejected", name: "환불 신청 거절" }, { id: "refund_approved", name: "환불 진행 중" }, { id: "refunded", name: "환불 완료" }, { id: "canceled", name: "주문 취소" }]} /><NumberInput source="pointsAwarded" label="최종 지급 포인트" disabled/><TextInput source="buyerRefundReason" label="구매자 환불 신청 사유" disabled multiline rows={3} fullWidth /><TextInput source="adminRefundReason" label="관리자 처리/거절 사유" multiline rows={4} fullWidth helperText="입금 거절 또는 구매자 환불 신청 거절 시 반드시 사유를 작성하세요." /></SimpleForm></Edit>;
 }
 function ShopSettingsEdit() {
   return <Edit><SimpleForm><TextInput source="bankName" label="은행명" validate={required()} /><TextInput source="accountNumber" label="계좌번호" validate={required()} fullWidth /><TextInput source="accountHolder" label="예금주" validate={required()} /></SimpleForm></Edit>;
@@ -670,13 +672,40 @@ function SiteSettingsEdit() {
   );
 }
 function ImageHostingSettings(){
-  const [configured,setConfigured]=useState(false),[configuredAt,setConfiguredAt]=useState(""),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false);
+  return <section className="image-hosting-settings"><header><small>IMAGE LINK MODE</small><h1>이미지 등록 방식</h1><p>현재는 외부 이미지 링크를 저장하는 방식으로 통일해 동작합니다.</p></header><div className="image-hosting-status ready"><ImagePlus/><div><b>이미지 URL 등록 사용 중</b><small>게시글 편집기의 ‘이미지 URL’ 버튼과 첨부 링크를 사용하세요.</small></div></div><div><p>ImgBB 등의 이미지 호스팅에서 발급된 직접 이미지 URL을 복사해 붙여 넣으면 됩니다. Apps Script 업로더를 추가하더라도 반환된 URL을 같은 필드에 저장하면 됩니다.</p></div></section>;
+}
+function PointAutomationSettings(){
+  const [values,setValues]=useState<Required<PointSettings>>(DEFAULT_POINT_SETTINGS),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false);
   const notify=useNotify();
-  async function refresh(){if(!functions){setLoading(false);return;}try{const call=httpsCallable<unknown,{configured:boolean;configuredAt?:string}>(functions,"getImageHostingStatus"),result=await call();setConfigured(result.data.configured);setConfiguredAt(result.data.configuredAt||"");}catch{notify("이미지 호스팅 상태를 확인하지 못했습니다.",{type:"error"});}finally{setLoading(false);}}
-  useEffect(()=>{void refresh();},[]);
-  async function register(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!functions)return;const form=event.currentTarget,apiKey=String(new FormData(form).get("apiKey")||"").trim();if(!apiKey)return;setSaving(true);try{await httpsCallable(functions,"setImageHostingKey")({apiKey});form.reset();await refresh();notify("ImgBB API 키를 등록했습니다. 키 값은 다시 표시되지 않습니다.",{type:"success"});}catch{notify("API 키 등록에 실패했습니다.",{type:"error"});}finally{setSaving(false);}}
-  async function remove(){if(!functions||!window.confirm("등록된 ImgBB API 키를 삭제할까요? 삭제 후 이미지 자동 업로드를 사용할 수 없습니다."))return;setSaving(true);try{await httpsCallable(functions,"deleteImageHostingKey")();await refresh();notify("ImgBB API 키를 삭제했습니다.",{type:"success"});}catch{notify("API 키 삭제에 실패했습니다.",{type:"error"});}finally{setSaving(false);}}
-  return <section className="image-hosting-settings"><header><small>PRIVATE IMAGE HOSTING</small><h1>이미지 호스팅 API</h1><p>키는 서버 전용 저장소에 보관되며 관리자 화면과 조회 API에서 절대 반환하지 않습니다.</p></header><div className={`image-hosting-status ${configured?"ready":"empty"}`}><ImagePlus/><div><b>{loading?"상태 확인 중…":configured?"ImgBB API 키 등록됨":"API 키 미등록"}</b>{configuredAt&&<small>마지막 등록: {new Date(configuredAt).toLocaleString("ko-KR")}</small>}</div></div><form onSubmit={register}><label>새 API 키<input name="apiKey" type="password" autoComplete="new-password" placeholder="키를 입력한 뒤 등록하세요" required minLength={8}/></label><p>등록 후에는 키를 확인하거나 복사할 수 없고, 새 키로 덮어쓰거나 삭제만 할 수 있습니다.</p><div><button type="submit" disabled={saving}>{configured?"새 키로 교체":"API 키 등록"}</button>{configured&&<button type="button" className="danger" disabled={saving} onClick={remove}>등록 키 삭제</button>}</div></form></section>;
+  useEffect(()=>{if(!db){setLoading(false);return;}return onSnapshot(doc(db,"pointSettings","main"),snapshot=>{setValues({...DEFAULT_POINT_SETTINGS,...snapshot.data()});setLoading(false);},()=>{setLoading(false);notify("포인트 설정을 불러오지 못했습니다.",{type:"error"});});},[notify]);
+  const number=(key:keyof PointSettings)=>(event:React.ChangeEvent<HTMLInputElement>)=>setValues(current=>({...current,[key]:Number(event.target.value||0)}));
+  const datetime=(key:"eventStartAtMs"|"eventEndAtMs")=>(event:React.ChangeEvent<HTMLInputElement>)=>setValues(current=>({...current,[key]:event.target.value?new Date(event.target.value).getTime():0}));
+  const localDate=(value:number)=>value?new Date(value-new Date(value).getTimezoneOffset()*60000).toISOString().slice(0,16):"";
+  async function save(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!db)return;setSaving(true);try{await setDoc(doc(db,"pointSettings","main"),{...values,updatedAt:new Date().toISOString()},{merge:true});notify("포인트 자동 지급 설정을 저장했습니다.",{type:"success"});}catch(error){notify(error instanceof Error?error.message:"포인트 설정 저장에 실패했습니다.",{type:"error"});}finally{setSaving(false);}}
+  if(loading)return <section className="image-hosting-settings"><p>포인트 설정을 불러오는 중입니다…</p></section>;
+  return <section className="image-hosting-settings"><header><small>AUTOMATIC REWARDS</small><h1>포인트 자동 지급</h1><p>모든 지급은 고유 원장으로 기록되어 같은 가입·공지·추천·주문에는 한 번만 지급됩니다.</p></header><form onSubmit={save}>
+    <label><input type="checkbox" checked={values.enabled} onChange={event=>setValues(current=>({...current,enabled:event.target.checked}))}/> 자동 지급 사용</label>
+    <label>회원가입 포인트<input type="number" min="0" value={values.signupPoints} onChange={number("signupPoints")}/></label>
+    <label>공지 최초 확인 포인트<input type="number" min="0" value={values.noticeReadPoints} onChange={number("noticeReadPoints")}/></label>
+    <label>추천인 포인트<input type="number" min="0" value={values.referralInviterPoints} onChange={number("referralInviterPoints")}/></label>
+    <label>추천받은 신규 회원 포인트<input type="number" min="0" value={values.referralInviteePoints} onChange={number("referralInviteePoints")}/></label>
+    <label>N번째 회원 주기<input type="number" min="0" value={values.memberMilestoneEvery} onChange={number("memberMilestoneEvery")}/><small>예: 100이면 100·200·300번째 회원마다 지급, 0이면 사용 안 함</small></label>
+    <label>N번째 회원 추가 포인트<input type="number" min="0" value={values.memberMilestonePoints} onChange={number("memberMilestonePoints")}/></label>
+    <label>구매 금액 단위(원)<input type="number" min="1" value={values.purchaseUnitAmount} onChange={number("purchaseUnitAmount")}/></label>
+    <label>금액 단위당 포인트<input type="number" min="0" value={values.purchasePointsPerUnit} onChange={number("purchasePointsPerUnit")}/><small>결제 승인 후 상품 전달 완료 상태에서 최종 지급됩니다.</small></label>
+    <hr/><label><input type="checkbox" checked={values.eventEnabled} onChange={event=>setValues(current=>({...current,eventEnabled:event.target.checked}))}/> 기간 한정 이벤트로 기존 설정 덮어쓰기</label>
+    <label>이벤트 이름<input value={values.eventName} onChange={event=>setValues(current=>({...current,eventName:event.target.value}))}/></label>
+    <label>시작<input type="datetime-local" value={localDate(values.eventStartAtMs)} onChange={datetime("eventStartAtMs")}/></label>
+    <label>종료<input type="datetime-local" value={localDate(values.eventEndAtMs)} onChange={datetime("eventEndAtMs")}/></label>
+    <label>이벤트 가입 포인트<input type="number" min="0" value={values.eventSignupPoints} onChange={number("eventSignupPoints")}/></label>
+    <label>이벤트 공지 확인 포인트<input type="number" min="0" value={values.eventNoticeReadPoints} onChange={number("eventNoticeReadPoints")}/></label>
+    <label>이벤트 추천인 포인트<input type="number" min="0" value={values.eventReferralInviterPoints} onChange={number("eventReferralInviterPoints")}/></label>
+    <label>이벤트 추천 가입 포인트<input type="number" min="0" value={values.eventReferralInviteePoints} onChange={number("eventReferralInviteePoints")}/></label>
+    <label>이벤트 N번째 가입 추가 포인트<input type="number" min="0" value={values.eventMemberMilestonePoints} onChange={number("eventMemberMilestonePoints")}/></label>
+    <label>이벤트 구매 금액 단위<input type="number" min="1" value={values.eventPurchaseUnitAmount} onChange={number("eventPurchaseUnitAmount")}/></label>
+    <label>이벤트 금액 단위당 포인트<input type="number" min="0" value={values.eventPurchasePointsPerUnit} onChange={number("eventPurchasePointsPerUnit")}/></label>
+    <button type="submit" disabled={saving}>{saving?"저장 중…":"포인트 설정 저장"}</button>
+  </form></section>;
 }
 function BoardList() {
   return (
@@ -854,6 +883,7 @@ export default function AdminApp() {
         <Resource name="adminNotices" options={{label:"관리자 공지"}} icon={Bell} list={AdminNoticeList} edit={AdminNoticeEdit} create={AdminNoticeCreate}/>
         <Resource name="users" options={{label:"회원"}} icon={CircleUserRound} list={MemberList}/>
         <Resource name="pointHistory" options={{label:"포인트 내역"}} icon={Ticket} list={PointHistoryList}/>
+        <Resource name="pointSettings" options={{label:"포인트 자동 지급"}} icon={Ticket} list={PointAutomationSettings}/>
         <Resource name="seatLayouts" options={{label:"좌석 배치 템플릿"}} icon={Armchair} list={SeatLayoutList} edit={SeatLayoutEdit} create={SeatLayoutCreate}/>
         <Resource
           name="ads"
