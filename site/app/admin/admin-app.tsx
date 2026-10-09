@@ -28,10 +28,8 @@ import {
   useGetList,
   useNotify,
   usePermissions,
-  useRecordContext,
   useRefresh,
 } from "react-admin";
-import { httpsCallable } from "firebase/functions";
 import {
   Bell,
   Armchair,
@@ -53,12 +51,11 @@ import { useFormContext } from "react-hook-form";
 import {
   firebaseAuthProvider,
   firebaseDataProvider,
-  syncMembersFromAuth,
 } from "./firebase-provider";
 import { RichTextInput } from "./rich-text-input";
 import { AdminDashboard } from "./dashboard";
 import { SeatLayoutInput } from "./seat-layout-input";
-import { db, functions as firebaseFunctions } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import { DEFAULT_POINT_SETTINGS, type PointSettings } from "@/lib/points";
 import { DEFAULT_CHARACTER_IMAGE_LINES, DEFAULT_CHARACTER_IMAGES, DEFAULT_K_ON_LOGO } from "@/lib/site-defaults";
 
@@ -417,34 +414,8 @@ function AdminList() {
     </List>
   );
 }
-function MemberAccountActions(){
-  const record=useRecordContext(),notify=useNotify(),refresh=useRefresh();
-  const [busy,setBusy]=useState(false);
-  if(!record)return null;
-  const member=record;
-  async function manage(action:"disable"|"enable"|"delete"){
-    if(!firebaseFunctions)return notify("Firebase Functions가 연결되지 않았습니다.",{type:"error"});
-    const email=String(member.email||member.id||"회원");
-    if(action==="delete"&&!window.confirm(`${email} 계정을 완전히 삭제할까요?\nFirebase Authentication 계정과 회원 프로필이 함께 삭제되며 되돌릴 수 없습니다.`))return;
-    if(action==="disable"&&!window.confirm(`${email} 계정을 비활성화할까요? 다시 활성화하기 전까지 로그인할 수 없습니다.`))return;
-    setBusy(true);
-    try{
-      await httpsCallable(firebaseFunctions,"manageMemberAccount")({uid:String(member.id),action});
-      notify(action==="delete"?"회원 계정을 완전히 삭제했습니다.":action==="disable"?"회원 로그인을 비활성화했습니다.":"회원 로그인을 다시 활성화했습니다.",{type:"success"});
-      refresh();
-    }catch(error){notify(error instanceof Error?error.message:"회원 계정 처리에 실패했습니다.",{type:"error"});}
-    finally{setBusy(false);}
-  }
-  return <span style={{display:"flex",gap:6,whiteSpace:"nowrap"}}><button type="button" disabled={busy} onClick={()=>manage(member.disabled?"enable":"disable")} style={{border:"1px solid #d8bcb3",borderRadius:7,padding:"5px 8px",background:"#fff",cursor:"pointer"}}>{member.disabled?"복구":"비활성화"}</button><button type="button" disabled={busy} onClick={()=>manage("delete")} style={{border:"1px solid #d96b78",borderRadius:7,padding:"5px 8px",background:"#fff2f3",color:"#a52f40",cursor:"pointer"}}>완전 삭제</button></span>;
-}
 function MemberList(){
-  const refresh=useRefresh();
-  useEffect(()=>{
-    let active=true;
-    syncMembersFromAuth().then(()=>{if(active)refresh();}).catch(error=>console.warn("기존 회원 자동 동기화를 건너뜁니다.",error));
-    return()=>{active=false;};
-  },[refresh]);
-  return <List filters={searchFilters} sort={{field:"joinedAt",order:"DESC"}}><Datagrid><TextField source="id" label="UID"/><EmailField source="email" label="이메일"/><TextField source="nickname" label="닉네임" emptyText="미등록"/><NumberField source="memberNumber" label="가입 순번"/><NumberField source="points" label="포인트" emptyText="0"/><BooleanField source="disabled" label="비활성"/><DateField source="joinedAt" label="가입일" showTime/><DateField source="nicknameChangedAt" label="프로필 변경" showTime/><FunctionField label="계정 관리" render={()=><MemberAccountActions/>}/></Datagrid></List>;
+  return <List filters={searchFilters} sort={{field:"joinedAt",order:"DESC"}}><div className="member-list-table"><div className="member-column-guide" aria-label="회원 목록 항목 설명"><span><b>UID</b><small>Firebase 회원 고유값</small></span><span><b>이메일</b><small>로그인 계정</small></span><span><b>닉네임</b><small>사이트 표시 이름</small></span><span><b>가입 순번</b><small>가입한 순서</small></span><span><b>포인트</b><small>현재 보유 포인트</small></span><span><b>가입일</b><small>최초 가입 시각</small></span><span><b>프로필 변경</b><small>닉네임 변경 시각</small></span></div><Datagrid><TextField source="id" label="UID"/><EmailField source="email" label="이메일"/><TextField source="nickname" label="닉네임" emptyText="미등록"/><NumberField source="memberNumber" label="가입 순번"/><NumberField source="points" label="포인트" emptyText="0"/><DateField source="joinedAt" label="가입일" showTime/><DateField source="nicknameChangedAt" label="프로필 변경" showTime/></Datagrid></div></List>;
 }
 function PointHistoryList(){
   return <List filters={searchFilters} sort={{field:"createdAt",order:"DESC"}}><Datagrid><EmailField source="userEmail" label="회원"/><NumberField source="delta" label="변동"/><NumberField source="balance" label="잔액"/><TextField source="reason" label="사유"/><DateField source="createdAt" label="처리일" showTime/></Datagrid></List>;

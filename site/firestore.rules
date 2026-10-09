@@ -244,6 +244,14 @@ service cloud.firestore {
         && (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'fcmTokens', 'deletedAt'])
           || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'referralCode'])
+            && (!('referralCode' in resource.data) || resource.data.referralCode == '')
+            && request.resource.data.referralCode is string
+            && request.resource.data.referralCode.size() >= 6
+            && request.resource.data.referralCode.size() <= 64
+            && getAfter(/databases/$(database)/documents/referralCodes/$(request.resource.data.referralCode)).data.uid == uid
+          )
+          || (
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'nickname', 'nicknameKey', 'nicknameChangedAt'])
             && validNicknameProfile(uid, request.resource.data)
             && (!('nicknameChangedAt' in resource.data)

@@ -33,6 +33,10 @@ function nicknameKey(value: string) {
   return encodeURIComponent(value.toLocaleLowerCase("ko-KR"));
 }
 
+function defaultReferralCode(user: User) {
+  return user.uid.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12).toUpperCase();
+}
+
 function changedAtMillis(value: unknown) {
   if (value && typeof value === "object" && "toMillis" in value && typeof value.toMillis === "function") return value.toMillis();
   const time = new Date(String(value || "")).getTime();
@@ -64,10 +68,45 @@ async function claimBasicProfile(firestore: Firestore, user: User, requestedNick
       nickname,
       nicknameKey: key,
       nicknameChangedAt: serverTimestamp(),
-      referralCode: String(profile.referralCode || user.uid.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12).toUpperCase()),
       ...(!profileSnapshot.exists() ? { joinedAt: serverTimestamp() } : {}),
     }, { merge: true });
   });
+}
+
+export async function ensureReferralCode(firestore: Firestore, user: User) {
+  const userRef = doc(firestore, "users", user.uid);
+  const profileSnapshot = await getDoc(userRef);
+  const profile = profileSnapshot.data() || {};
+  const code = String(profile.referralCode || defaultReferralCode(user)).trim().toUpperCase();
+  if (!code) throw new Error("추천 코드를 만들 수 없습니다.");
+  const codeRef = doc(firestore, "referralCodes", code);
+  await runTransaction(firestore, async transaction => {
+    const codeSnapshot = await transaction.get(codeRef);
+    if (codeSnapshot.exists() && codeSnapshot.data().uid !== user.uid) throw new Error("추천 코드가 중복되었습니다. 관리자에게 문의해 주세요.");
+    if (!codeSnapshot.exists()) {
+      transaction.set(codeRef, {
+        uid: user.uid,
+        email: user.email || "",
+        code,
+        createdAt: new Date().toISOString(),
+        createdAtServer: serverTimestamp(),
+      });
+    }
+  });
+  if (profile.referralCode !== code) {
+    try {
+      await setDoc(userRef, {
+        email: user.email || "",
+        referralCode: code,
+        ...(!profileSnapshot.exists() ? { joinedAt: serverTimestamp() } : {}),
+      }, { merge: true });
+    } catch (error) {
+      // The referral lookup document is enough for invitations to work. Keep
+      // showing the deterministic code even before updated user rules deploy.
+      if (!isPermissionFailure(error)) throw error;
+    }
+  }
+  return code;
 }
 
 export async function claimNickname(firestore: Firestore, user: User, requestedNickname: string, referralCodeValue = "") {
@@ -80,12 +119,13 @@ export async function claimNickname(firestore: Firestore, user: User, requestedN
   const signupLedgerRef = doc(firestore,"pointLedger",`signup_${user.uid}`);
   const settingsRef = doc(firestore,"pointSettings","main");
   const memberCounterRef = doc(firestore,"systemCounters","members");
-  const ownReferralCode = user.uid.replace(/[^a-zA-Z0-9]/g,"").slice(0,12).toUpperCase();
+  const ownReferralCode = defaultReferralCode(user);
   const ownReferralRef = doc(firestore,"referralCodes",ownReferralCode);
   const requestedReferralCode = referralCodeValue.trim().toUpperCase();
   const requestedReferralRef = requestedReferralCode ? doc(firestore,"referralCodes",requestedReferralCode) : null;
   const referralRecordRef = doc(firestore,"referrals",user.uid);
-  await runTransaction(firestore, async transaction => {
+  try {
+    await runTransaction(firestore, async transaction => {
     const [profileSnapshot, claimSnapshot,signupLedgerSnapshot,settingsSnapshot,counterSnapshot,ownReferralSnapshot,requestedReferralSnapshot,referralRecordSnapshot] = await Promise.all([
       transaction.get(userRef),transaction.get(claimRef),transaction.get(signupLedgerRef),transaction.get(settingsRef),transaction.get(memberCounterRef),transaction.get(ownReferralRef),
       requestedReferralRef?transaction.get(requestedReferralRef):Promise.resolve(null),transaction.get(referralRecordRef),
@@ -141,21 +181,21 @@ export async function claimNickname(firestore: Firestore, user: User, requestedN
       referralCode:String(profile.referralCode||ownReferralCode),
       ...(isNewMember?{points:balance,pointsUpdatedAt:createdAt,lastPointLedgerId,memberNumber,joinedAt:serverTimestamp()}:{}),
     }, { merge: true });
-  });
+    });
+  } catch (error) {
+    // Older members may not have the point/referral documents required by the
+    // extended signup transaction. A profile nickname must still be writable
+    // without depending on those optional rewards.
+    if (!isPermissionFailure(error)) throw error;
+    await claimBasicProfile(firestore, user, nickname);
+  }
   return nickname;
 }
 
 export async function registerWithEmail(auth: Auth, firestore: Firestore, email: string, password: string, nickname: string, referralCode = ""): Promise<User> {
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   try {
-    try {
-      await claimNickname(firestore, credential.user, nickname, referralCode);
-    } catch (error) {
-      // Member creation must not be blocked just because optional reward/referral
-      // writes are not yet available in the deployed Firestore rules.
-      if (!isPermissionFailure(error)) throw error;
-      await claimBasicProfile(firestore, credential.user, nickname);
-    }
+    await claimNickname(firestore, credential.user, nickname, referralCode);
   } catch (error) {
     await credential.user.delete().catch(() => undefined);
     await signOut(auth).catch(() => undefined);
@@ -203,6 +243,7 @@ export async function loginWithGoogle(auth: Auth, firestore?: Firestore): Promis
 
 export function authErrorMessage(error: unknown) {
   const code = error instanceof Error ? error.message : "";
+  if (isPermissionFailure(error)) return "프로필 저장 권한을 확인하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.";
   if (code.includes("functions/already-exists")) return code.replace(/^.*?Error:\s*/, "");
   if (code.includes("functions/failed-precondition")) return code.replace(/^.*?Error:\s*/, "");
   if (code.includes("functions/invalid-argument")) return code.replace(/^.*?Error:\s*/, "");

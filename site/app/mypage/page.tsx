@@ -9,7 +9,7 @@ import { Bell, CalendarDays, ChevronRight, CircleUserRound, Settings2, Sparkles,
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { auth, db } from "@/lib/firebase";
-import { authErrorMessage, claimNickname } from "@/lib/auth";
+import { authErrorMessage, claimNickname, ensureReferralCode } from "@/lib/auth";
 import { PublicHeader } from "@/app/components/public-header";
 
 type Reservation = { id:string; eventTitle?:string; createdAt?:string; status?:string; seatLabel?:string };
@@ -33,6 +33,7 @@ export default function MyPage(){
   const [messages,setMessages]=useState<AccountMessage[]>([]);
   const [saving,setSaving]=useState(false);
   const [notice,setNotice]=useState("");
+  const [generatedReferralCode,setGeneratedReferralCode]=useState("");
   const [siteName,setSiteName]=useState("K-ON! FANDOM KR"),[logoUrl,setLogoUrl]=useState(LOGO),[fontFamily,setFontFamily]=useState('"Pretendard", "Noto Sans KR", system-ui, sans-serif');
 
   useEffect(()=>{
@@ -46,11 +47,17 @@ export default function MyPage(){
     const stopMessages=onSnapshot(query(collection(db,"accountMessages"),where("userId","==",user.uid)),snapshot=>setMessages(snapshot.docs.map(item=>({id:item.id,...item.data()}) as AccountMessage)));
     return()=>{stopProfile();stopReservations();stopMessages();};
   },[user]);
+  useEffect(()=>{
+    if(!user||!db)return;
+    setGeneratedReferralCode("");
+    ensureReferralCode(db,user).then(setGeneratedReferralCode).catch(error=>setNotice(authErrorMessage(error)));
+  },[user]);
   useEffect(()=>{if(!db)return;return onSnapshot(doc(db,"siteSettings","main"),snapshot=>{if(!snapshot.exists())return;setSiteName(String(snapshot.data().siteName||"K-ON! FANDOM KR"));setLogoUrl(String(snapshot.data().logoUrl||LOGO));setFontFamily(String(snapshot.data().fontFamily||'"Pretendard", "Noto Sans KR", system-ui, sans-serif'));});},[]);
 
   const sortedReservations=useMemo(()=>[...reservations].sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))),[reservations]);
   const sortedMessages=useMemo(()=>[...messages].sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))),[messages]);
   const nickname=profile.nickname||user?.displayName||"";
+  const referralCode=profile.referralCode||generatedReferralCode;
   const unreadCount=messages.filter(message=>!message.read).length;
 
   async function saveProfile(event:FormEvent<HTMLFormElement>){
@@ -68,6 +75,12 @@ export default function MyPage(){
     finally{setSaving(false);}
   }
 
+  async function copyReferralCode(){
+    if(!referralCode)return;
+    try{await navigator.clipboard.writeText(referralCode);setNotice("추천 코드를 복사했습니다.");}
+    catch{setNotice("추천 코드 복사에 실패했습니다. 코드를 직접 선택해 주세요.");}
+  }
+
   const siteFooter=<footer className="site-footer"><div className="brand"><Image src={logoUrl} alt="" width={124} height={44} unoptimized/><span>{siteName}</span></div><p>팬덤 작성 콘텐츠는 각 작성자에게 권리가 있으며, K-ON! 원작·상표·캐릭터의 권리는 각 권리자에게 있습니다. 비영리 비공식 팬 커뮤니티입니다.</p></footer>;
 
   if(!authReady)return <main className="mypage-loading">마이페이지를 불러오는 중입니다.</main>;
@@ -77,7 +90,7 @@ export default function MyPage(){
     <PublicHeader siteName={siteName} logoUrl={logoUrl} active="mypage"/>
     <header className="mypage-hero"><div className="mypage-avatar" aria-hidden="true">{(nickname||user.email||"K").slice(0,1).toUpperCase()}</div><div className="mypage-identity"><small>MY FAN PROFILE</small><h1>{nickname||"프로필을 등록해 주세요"}</h1><p>{user.email}</p></div><div className="mypage-stats" aria-label="회원 활동 요약"><div><strong>{Number(profile.points||0).toLocaleString()}P</strong><span>보유 포인트</span></div><div><strong>{reservations.length}</strong><span>예약</span></div><div><strong>{unreadCount}</strong><span>읽지 않은 쪽지</span></div></div></header>
     <div className="mypage-grid">
-      <section id="settings" className="mypage-panel mypage-profile-panel"><div className="mypage-panel-heading"><span><Settings2/></span><div><small>PROFILE</small><h2>프로필 설정</h2></div></div><p className="mypage-panel-description">커뮤니티에서 사용할 닉네임을 등록하세요. 닉네임은 중복 사용할 수 없으며 변경 후 30일 동안 다시 바꿀 수 없습니다.</p><form className="mypage-profile-form" onSubmit={saveProfile}><label htmlFor="nickname">닉네임</label><Input id="nickname" name="nickname" defaultValue={nickname} minLength={2} maxLength={20} placeholder="2~20자 닉네임" required/>{!profile.referralCode&&<><label htmlFor="referralCode">친구 추천 코드</label><Input id="referralCode" name="referralCode" placeholder="선택 입력"/></>}<p>한글, 영문, 숫자, 공백과 일부 기호(_ . -)를 사용할 수 있습니다.</p>{profile.referralCode&&<p><b>친구 추천 코드:</b> {profile.referralCode}{profile.memberNumber?` · ${profile.memberNumber}번째 회원`:""}</p>}<Button disabled={saving}>{saving?"저장 중…":nickname?"프로필 수정":"프로필 등록"}</Button>{notice&&<div className="mypage-notice" role="status">{notice}</div>}</form></section>
+      <section id="settings" className="mypage-panel mypage-profile-panel"><div className="mypage-panel-heading"><span><Settings2/></span><div><small>PROFILE</small><h2>프로필 설정</h2></div></div><p className="mypage-panel-description">커뮤니티에서 사용할 닉네임을 등록하세요. 닉네임은 중복 사용할 수 없으며 변경 후 30일 동안 다시 바꿀 수 없습니다.</p><form className="mypage-profile-form" onSubmit={saveProfile}><label htmlFor="nickname">닉네임</label><Input id="nickname" name="nickname" defaultValue={nickname} minLength={2} maxLength={20} placeholder="2~20자 닉네임" required/><p>한글, 영문, 숫자, 공백과 일부 기호(_ . -)를 사용할 수 있습니다.</p><label>친구에게 줄 내 추천 코드</label>{referralCode?<div className="mypage-referral-code"><code>{referralCode}</code><Button type="button" variant="outline" onClick={copyReferralCode}>복사</Button></div>:<p>추천 코드를 준비하고 있습니다.</p>}{profile.memberNumber&&<p>{profile.memberNumber}번째 회원</p>}<Button disabled={saving}>{saving?"저장 중…":nickname?"프로필 수정":"프로필 등록"}</Button>{notice&&<div className="mypage-notice" role="status">{notice}</div>}</form></section>
       <section className="mypage-panel"><div className="mypage-panel-heading"><span><TicketCheck/></span><div><small>RESERVATION</small><h2>내 예약</h2></div><Link href="/events" aria-label="행사 예약 페이지로 이동"><ChevronRight/></Link></div><div className="mypage-list">{sortedReservations.length?sortedReservations.slice(0,4).map(item=><article key={item.id}><div><strong>{item.eventTitle||"팬 행사"}{item.seatLabel&&` · ${item.seatLabel} 좌석`}</strong><time>{displayDate(item.createdAt)}</time></div><span className={`mypage-status ${item.status||"received"}`}>{statusLabel[item.status||""]||item.status||"접수"}</span></article>):<div className="mypage-empty"><CalendarDays/><p>아직 예약한 행사가 없습니다.</p><Link href="/events">행사 둘러보기</Link></div>}</div></section>
       <section className="mypage-panel mypage-message-panel"><div className="mypage-panel-heading"><span><Bell/></span><div><small>MESSAGE</small><h2>내 쪽지</h2></div></div><div className="mypage-list">{sortedMessages.length?sortedMessages.slice(0,5).map(message=><article key={message.id} className={message.read?"":"unread"}><span className="mypage-message-dot" aria-label={message.read?"읽음":"읽지 않음"}/><div><strong>{message.title||"회원 알림"}</strong><p>{message.body||"새로운 안내가 도착했습니다."}</p><time>{displayDate(message.createdAt)}</time></div></article>):<div className="mypage-empty"><Sparkles/><p>도착한 쪽지가 없습니다.</p></div>}</div></section>
     </div>

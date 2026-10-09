@@ -3,8 +3,7 @@
 import type { AuthProvider, DataProvider, RaRecord } from "react-admin";
 import { addDoc, collection, deleteDoc, doc, DocumentData, DocumentReference, DocumentSnapshot, getCountFromServer, getDoc, getDocs, limit as firestoreLimit, orderBy, query, runTransaction, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { httpsCallable } from "firebase/functions";
-import { auth, db, functions } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { DEFAULT_CHARACTER_IMAGES, DEFAULT_K_ON_LOGO } from "@/lib/site-defaults";
 import { purchaseReward } from "@/lib/points";
 
@@ -15,17 +14,6 @@ const permissionByResource:Record<string,string> = {
 
 function requireDb(){if(!db)throw new Error("Firebase가 연결되지 않았습니다.");return db;}
 async function firebaseRequest<T>(request:Promise<T>,label:string,timeout=12_000){let timer:ReturnType<typeof setTimeout>|undefined;try{return await Promise.race([request,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error(`${label} 시간이 초과됐습니다. Firebase 연결 상태를 확인해 주세요.`)),timeout);})]);}finally{if(timer)clearTimeout(timer);}}
-let memberSyncPromise:Promise<void>|null=null;
-let membersSyncedAt=0;
-export async function syncMembersFromAuth(){
-  if(!functions)throw new Error("Firebase Functions가 연결되지 않았습니다.");
-  if(Date.now()-membersSyncedAt<60_000)return;
-  if(!memberSyncPromise)memberSyncPromise=firebaseRequest(httpsCallable(functions,"syncAuthUsers")({}),"기존 회원 동기화",120_000)
-    .then(()=>{membersSyncedAt=Date.now();})
-    .catch(error=>{throw error;})
-    .finally(()=>{memberSyncPromise=null;});
-  return memberSyncPromise;
-}
 let userReadyPromise:Promise<NonNullable<typeof auth>["currentUser"]>|null=null;
 function waitForUser(){if(auth?.currentUser)return Promise.resolve(auth.currentUser);if(!userReadyPromise)userReadyPromise=new Promise((resolve,reject)=>{if(!auth)return reject(new Error("Firebase가 연결되지 않았습니다."));const stop=onAuthStateChanged(auth,user=>{stop();resolve(user);},error=>{userReadyPromise=null;reject(error);});});return userReadyPromise;}
 function normalize(value:unknown):RaRecord {const record=value as RaRecord;return {...record,id:String(record.id)};}
@@ -189,9 +177,9 @@ export const firebaseDataProvider:DataProvider = {
 };
 
 export const firebaseAuthProvider:AuthProvider = {
-  async login({username,password}){if(!auth)throw new Error("Firebase가 연결되지 않았습니다.");const credential=await signInWithEmailAndPassword(auth,username,password);userReadyPromise=Promise.resolve(credential.user);accessCache=null;await credential.user.getIdTokenResult(true);const access=await currentAdminAccess();if(!access||(!access.owner&&access.permissions.length===0)){await signOut(auth);userReadyPromise=null;accessCache=null;throw new Error("관리자 권한이 없습니다.");}},
+  async login({username,password}){if(!auth)throw new Error("Firebase가 연결되지 않았습니다.");const credential=await signInWithEmailAndPassword(auth,username,password);userReadyPromise=Promise.resolve(credential.user);accessCache=null;await credential.user.getIdTokenResult(true);const access=await currentAdminAccess();if(!access||(!access.owner&&access.role!=="deputy"&&access.permissions.length===0)){await signOut(auth);userReadyPromise=null;accessCache=null;throw new Error("관리자 권한이 없습니다.");}},
   async logout(){accessCache=null;userReadyPromise=null;if(auth)await signOut(auth);},
-  async checkAuth(){const access=await currentAdminAccess();if(!access)throw new Error("로그인이 필요합니다.");if(!access.owner&&access.permissions.length===0)throw new Error("관리자 권한이 없습니다.");},
+  async checkAuth(){const access=await currentAdminAccess();if(!access)throw new Error("로그인이 필요합니다.");if(!access.owner&&access.role!=="deputy"&&access.permissions.length===0)throw new Error("관리자 권한이 없습니다.");},
   async checkError(){},
   async getIdentity(){const user=auth?.currentUser||await waitForUser();if(!user)throw new Error("로그인이 필요합니다.");return{id:user.uid,fullName:user.email||"관리자"};},
   async getPermissions(){const access=await currentAdminAccess();if(!access)return[];if(access.owner)return["owner"];return access.role==="deputy"?["deputy",...access.permissions]:access.permissions;},
