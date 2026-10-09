@@ -7,7 +7,7 @@ import { auth, db } from "@/lib/firebase";
 
 const permissionByResource:Record<string,string> = {
   notices:"notices", news:"notices", events:"events", inquiries:"applications",
-  reservations:"applications", ads:"design", adminDirectory:"users", siteSettings:"design",
+  reservations:"applications", ads:"design", adminDirectory:"users", siteSettings:"design", boardDefinitions:"notices", boardPosts:"notices",
 };
 
 function requireDb(){if(!db)throw new Error("Firebase가 연결되지 않았습니다.");return db;}
@@ -43,6 +43,6 @@ export const firebaseAuthProvider:AuthProvider = {
   async checkAuth(){const user=auth?.currentUser||await waitForUser();if(!user)throw new Error("로그인이 필요합니다.");const token=await user.getIdTokenResult();if(token.claims.role!=="owner"&&!Array.isArray(token.claims.permissions))throw new Error("관리자 권한이 없습니다.");},
   async checkError(){},
   async getIdentity(){const user=auth?.currentUser||await waitForUser();if(!user)throw new Error("로그인이 필요합니다.");return{id:user.uid,fullName:user.email||"관리자"};},
-  async getPermissions(){const user=auth?.currentUser||await waitForUser();if(!user)return[];const token=await user.getIdTokenResult();return token.claims.role==="owner"?["owner"]:Array.isArray(token.claims.permissions)?token.claims.permissions:[];},
+  async getPermissions(){const user=auth?.currentUser||await waitForUser();if(!user)return[];const token=await user.getIdTokenResult();if(token.claims.role==="owner")return["owner"];const permissions=Array.isArray(token.claims.permissions)?token.claims.permissions:[];return token.claims.role==="deputy"?["deputy",...permissions]:permissions;},
   async canAccess({resource}){const user=auth?.currentUser||await waitForUser();if(!user)return false;const token=await user.getIdTokenResult();if(token.claims.role==="owner")return true;const permissions=Array.isArray(token.claims.permissions)?token.claims.permissions:[];return permissions.includes(permissionByResource[resource]);},
 };

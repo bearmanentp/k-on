@@ -24,6 +24,14 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if has('notices');
     }
+    match /boardDefinitions/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('notices');
+    }
+    match /boardPosts/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('notices');
+    }
     match /ads/{id} {
       allow read: if true;
       allow create, update, delete: if has('design') || has('notices');
@@ -65,8 +73,9 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['email', 'fcmTokens'])
         && request.resource.data.email == request.auth.token.email;
       allow update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'fcmTokens'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'fcmTokens', 'nickname', 'deletedAt'])
         && request.resource.data.email == request.auth.token.email;
+      allow delete: if signedIn() && request.auth.uid == uid;
       allow read: if has('users');
     }
     match /pointHistory/{id} {

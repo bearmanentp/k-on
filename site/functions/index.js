@@ -48,12 +48,14 @@ export const trackStorageDelete = onObjectDeleted(async event => {
 });
 
 export const manageAdminPermissions = onCall(async request => {
-  if (!request.auth || request.auth.token.role !== "owner") {
-    throw new HttpsError("permission-denied", "총관리자만 관리자 권한을 변경할 수 있습니다.");
+  const callerRole = request.auth?.token?.role;
+  if (!request.auth || !["owner", "deputy"].includes(callerRole)) {
+    throw new HttpsError("permission-denied", "관리자 권한을 변경할 권한이 없습니다.");
   }
   const email = String(request.data?.email || "").trim().toLowerCase();
   const permissions = [...new Set(Array.isArray(request.data?.permissions) ? request.data.permissions : [])]
     .filter(permission => allowedPermissions.includes(permission));
+  const requestedRole = request.data?.role === "deputy" ? "deputy" : "manager";
   if (!email) throw new HttpsError("invalid-argument", "회원 이메일을 입력해 주세요.");
 
   let target;
@@ -67,15 +69,17 @@ export const manageAdminPermissions = onCall(async request => {
   }
 
   const existing = target.customClaims || {};
-  if (existing.role === "owner") throw new HttpsError("failed-precondition", "다른 총관리자 권한은 변경할 수 없습니다.");
+  if (existing.role === "owner" || (callerRole === "deputy" && existing.role === "deputy")) throw new HttpsError("failed-precondition", "자신보다 높은 관리자 권한은 변경할 수 없습니다.");
+  if (callerRole === "deputy" && requestedRole === "deputy") throw new HttpsError("permission-denied", "부총관리자는 다른 부총관리자를 지정할 수 없습니다.");
   const preservedClaims = { ...existing };
   delete preservedClaims.role;
   delete preservedClaims.permissions;
-  const claims = permissions.length ? { ...preservedClaims, role: "manager", permissions } : preservedClaims;
+  const claims = permissions.length ? { ...preservedClaims, role: requestedRole, permissions } : preservedClaims;
   await getAuth().setCustomUserClaims(target.uid, claims);
   await getFirestore().doc(`adminDirectory/${target.uid}`).set({
     email,
     permissions,
+    role: permissions.length ? requestedRole : "member",
     active: permissions.length > 0,
     updatedAt: new Date().toISOString(),
     updatedBy: request.auth.uid,

@@ -1,6 +1,6 @@
 import { HelpCircle, Megaphone, Newspaper, type LucideIcon } from "lucide-react";
 
-export type BoardKey = "news" | "notices" | "inquiries";
+export type BoardKey = string;
 
 export type BoardDefinition = {
   key: BoardKey;
@@ -10,6 +10,8 @@ export type BoardDefinition = {
   icon: LucideIcon;
   collection: string;
   requiresLogin?: boolean;
+  order?: number;
+  active?: boolean;
 };
 
 /** Add future public boards here. Header menus and the board page share this source. */
