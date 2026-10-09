@@ -46,23 +46,6 @@ const defaults:SiteSettings = {
     {name:"나카노 아즈사",url:`${TBS}/images/chara_photo08_1.gif`,source:`${TBS}/chara08.html`},
   ],
 };
-const demoSchema:FormField[] = [
-  {id:"nickname",label:"닉네임",type:"text",required:true},
-  {id:"email",label:"연락 가능한 이메일",type:"email",required:true},
-  {id:"song",label:"좋아하는 곡",type:"select",required:true,options:["Cagayake!GIRLS","ふわふわ時間","U&I","기타"]},
-  {id:"agree",label:"행사 안내와 개인정보 수집에 동의합니다",type:"checkbox",required:true},
-];
-const demoEvents:EventItem[] = [
-  {id:"demo-event-1",title:"방과 후 티타임 팬미팅",date:"2026-11-21T14:00",place:"서울 합정",summary:"음악 감상, 팬 토크, 굿즈 교환이 이어지는 하루.",capacity:40,status:"open",formSchema:demoSchema},
-  {id:"demo-event-2",title:"경음악부 합주 데이",date:"2026-12-12T13:00",place:"서울 신촌",summary:"실력과 상관없이 함께 K-ON! 곡을 연주하는 오픈 세션.",capacity:20,status:"open",formSchema:[...demoSchema,{id:"instrument",label:"담당 악기",type:"radio",required:true,options:["기타","베이스","드럼","키보드","보컬"]}]},
-];
-const demoNotices:Post[] = [
-  {id:"demo-n1",title:"커뮤니티 운영 안내",body:"팬덤을 존중하는 마음으로 서로를 배려해 주세요.",category:"필독",createdAt:"2026-10-05",pinned:true},
-  {id:"demo-n2",title:"11월 팬미팅 참가 안내",body:"확정 안내는 예약 상태와 알림을 통해 전달됩니다.",category:"행사",createdAt:"2026-10-05"},
-];
-const demoNews:Post[] = [
-  {id:"demo-news1",title:"K-ON! FANDOM KR 새 단장",body:"팬 행사와 게시판을 한곳에서 이용할 수 있도록 새롭게 문을 열었습니다.",category:"커뮤니티",createdAt:"2026-10-05"},
-];
 const statusLabel:Record<string,string> = {received:"접수",reviewing:"검토 중",confirmed:"확정",completed:"안내 완료",waiting:"답변 대기",answered:"답변 완료"};
 
 function directImageUrl(value:string) {
@@ -78,7 +61,7 @@ function parseSchema(text:string):FormField[] {
 }
 
 export default function Home(){
-  const [site,setSite]=useState(defaults),[events,setEvents]=useState<EventItem[]>(demoEvents),[notices,setNotices]=useState<Post[]>(demoNotices),[news,setNews]=useState<Post[]>(demoNews);
+  const [site,setSite]=useState(defaults),[events,setEvents]=useState<EventItem[]>([]),[notices,setNotices]=useState<Post[]>([]),[news,setNews]=useState<Post[]>([]);
   const [inquiries,setInquiries]=useState<Inquiry[]>([]),[reservations,setReservations]=useState<Reservation[]>([]),[adminNotices,setAdminNotices]=useState<AdminNotice[]>([]),[messages,setMessages]=useState<AccountMessage[]>([]),[ads,setAds]=useState<ManualAd[]>([]);
   const [user,setUser]=useState<User|null>(null),[role,setRole]=useState(""),[permissions,setPermissions]=useState<Permission[]>([]),[points,setPoints]=useState(0);
   const [slide,setSlide]=useState(0),[authOpen,setAuthOpen]=useState(false),[authMode,setAuthMode]=useState<"login"|"register">("login"),[adminOpen,setAdminOpen]=useState(false),[inboxOpen,setInboxOpen]=useState(false),[authNotice,setAuthNotice]=useState(""),[termsAccepted,setTermsAccepted]=useState(false),[privacyAccepted,setPrivacyAccepted]=useState(false);
@@ -147,7 +130,7 @@ export default function Home(){
     <section className="board-overview" aria-labelledby="community-preview-title"><div className="section board-overview-heading"><div><small>COMMUNITY LOUNGE</small><h2 id="community-preview-title">팬덤 소식 한눈에 보기</h2></div><a className="board-link-button" href="/boards#news"><Newspaper/>커뮤니티 전체 보기</a></div><div className="board-overview-grid"><BoardSection id="news" tab="news" kicker="FANDOM NEWS" title="소식 게시판" icon={<Newspaper/>} posts={news}/><BoardSection id="notices" tab="notices" kicker="NOTICE" title="공지 게시판" icon={<Megaphone/>} posts={notices} dark/></div></section><ManualAdSlot ads={ads} slot="after-community"/>
     <section id="events" className="section"><div className="section-head"><div><small>EVENT & RESERVATION</small><h2>행사 예약</h2></div><p>원하는 행사를 선택하고 관리자가 만든 신청폼을 작성하세요.</p></div><div className="event-grid">{openEvents.map((item,i)=><article className="event-card" key={item.id}><span>0{i+1}</span><p className="date"><CalendarDays/>{new Date(item.date).toLocaleDateString("ko-KR",{month:"long",day:"numeric",weekday:"short"})}</p><h3>{item.title}</h3><p>{item.summary}</p><dl><div><dt>장소</dt><dd>{item.place}</dd></div><div><dt>정원</dt><dd>{item.capacity}명</dd></div></dl><Button onClick={()=>user?setReserveEvent(item):(setAuthOpen(true),setToast("예약하려면 로그인해 주세요."))}>예약하기</Button></article>)}</div>{user&&<div className="my-board"><h3>내 예약</h3><DataTable headers={["행사","신청일","상태"]} rows={reservations.filter(r=>r.userId===user.uid).map(r=>[r.eventTitle,new Date(r.createdAt).toLocaleDateString("ko-KR"),statusLabel[r.status]])}/></div>}</section>
     <section id="inquiries" className="board-section inquiry-section"><div className="section"><div className="section-head"><div><small>SUPPORT</small><h2>문의 게시판</h2></div><a className="board-link-button" href="/boards#inquiries"><MessageSquareText/>문의 게시판으로 이동</a></div>{user?<DataTable headers={["분류","제목","작성일","상태"]} rows={inquiries.filter(x=>isAdmin||x.userId===user.uid).slice(0,5).map(x=>[x.category,<a className="title-button" key={x.id} href={`/boards#inquiries/${x.id}`}>{x.title}</a>,new Date(x.createdAt).toLocaleDateString("ko-KR"),statusLabel[x.status]])}/>:<div className="login-gate"><MessageSquareText/><h3>회원 전용 문의 게시판입니다</h3><p>로그인 후 전용 게시판 페이지에서 문의를 작성하고 답변 상태를 확인할 수 있습니다.</p><a className="board-link-button" href="/boards#inquiries">게시판 열기</a></div>}</div></section>
-    <section className="community"><Music2/><small>OUR COMMUNITY</small><h2>{site.communityMessage}</h2><p>공식 작품과 권리자를 존중하는 비영리 팬 커뮤니티입니다.</p></section><footer><div className="brand"><Image src={site.logoUrl} alt="" width={124} height={44} unoptimized/><span>{site.siteName}</span></div><p>비공식 팬 커뮤니티 · 관련 권리는 각 권리자에게 있습니다.</p></footer>
+    <section className="community"><Music2/><small>OUR COMMUNITY</small><h2>{site.communityMessage}</h2><p>공식 작품과 권리자를 존중하는 비영리 팬 커뮤니티입니다.</p></section><footer><div className="brand"><Image src={site.logoUrl} alt="" width={124} height={44} unoptimized/><span>{site.siteName}</span></div><p>팬덤 작성 콘텐츠는 각 작성자에게 권리가 있으며, K-ON! 원작·상표·캐릭터의 권리는 각 권리자에게 있습니다. 비영리 비공식 팬 커뮤니티입니다.</p></footer>
 
     <Dialog open={authOpen} onOpenChange={v=>{setAuthOpen(v);if(v)setAuthNotice("")}}><DialogContent><DialogHeader><DialogTitle>{authMode==="login"?"로그인":"회원가입"}</DialogTitle><DialogDescription>예약, 문의, 알림 기능을 이용할 수 있습니다.</DialogDescription></DialogHeader><form className="form" onSubmit={memberAuth}><Input name="email" type="email" placeholder="이메일" required/><Input name="password" type="password" minLength={6} placeholder="비밀번호 (6자 이상)" required/><div className="auth-consents"><label><input name="terms" type="checkbox" checked={termsAccepted} onChange={e=>setTermsAccepted(e.target.checked)} required={authMode==="register"}/> <a href="/terms" target="_blank" rel="noreferrer">이용약관</a>에 동의합니다.</label><label><input name="privacy" type="checkbox" checked={privacyAccepted} onChange={e=>setPrivacyAccepted(e.target.checked)} required={authMode==="register"}/> <a href="/privacy" target="_blank" rel="noreferrer">개인정보 처리방침</a>에 동의합니다.</label></div>{authNotice&&<p className="auth-notice">{authNotice}</p>}<Button>{authMode==="login"?"이메일로 로그인":"이메일 회원가입"}</Button></form><div className="auth-divider"><span>또는</span></div><Button type="button" variant="outline" onClick={googleAuth}>Google 계정으로 계속하기</Button><button className="text-link" onClick={()=>{setAuthMode(authMode==="login"?"register":"login");setAuthNotice("")}}>{authMode==="login"?"계정이 없나요? 회원가입":"이미 계정이 있나요? 로그인"}</button></DialogContent></Dialog>
     <Dialog open={inboxOpen} onOpenChange={setInboxOpen}><DialogContent className="scroll-dialog"><DialogHeader><DialogTitle>내 알림함</DialogTitle><DialogDescription>예약 진행 상황과 관리자 쪽지를 확인합니다.</DialogDescription></DialogHeader><div className="inbox-list">{messages.length?messages.map(message=><button key={message.id} className={message.read?"message-card":"message-card unread"} onClick={()=>openMessage(message)}><span className="message-icon"><Mail/></span><span><b>{message.title}</b><p>{message.body}</p><time>{new Date(message.createdAt).toLocaleString("ko-KR")}</time></span></button>):<div className="inbox-empty"><Bell/><p>도착한 알림이 없습니다.</p></div>}</div><Button variant="outline" onClick={enableNotifications}><Bell/>브라우저 백그라운드 알림 켜기</Button></DialogContent></Dialog>

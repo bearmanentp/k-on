@@ -48,6 +48,10 @@ service cloud.firestore {
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('applications'));
       allow update, delete: if has('applications');
     }
+    match /inquiryCategories/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('applications');
+    }
     match /reservations/{id} {
       allow create: if signedIn()
         && request.resource.data.userId == request.auth.uid

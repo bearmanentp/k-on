@@ -19,14 +19,11 @@ type BoardTab = BoardKey;
 type Permission = "design" | "events" | "notices" | "applications" | "users" | "points";
 type Post = { id:string; title:string; body:string; category:string; createdAt:string; pinned?:boolean };
 type Inquiry = { id:string; userId:string; userEmail:string; title:string; body:string; category:string; createdAt:string; status:"waiting"|"answered"; answer?:string };
+type InquiryCategory = { id:string; label:string; description?:string; active?:boolean; order?:number };
 type RouteState = { tab:BoardTab; itemId?:string; compose?:boolean };
 
 const LOGO = "https://upload.wikimedia.org/wikipedia/commons/1/17/K-ON_anime_wordmark.svg";
-const demoNews:Post[] = [{id:"demo-news1",title:"K-ON! FANDOM KR 새 단장",body:"팬 행사와 게시판을 한곳에서 이용할 수 있도록 새롭게 문을 열었습니다.",category:"커뮤니티",createdAt:"2026-10-05"}];
-const demoNotices:Post[] = [
-  {id:"demo-n1",title:"커뮤니티 운영 안내",body:"팬덤을 존중하는 마음으로 서로를 배려해 주세요.",category:"필독",createdAt:"2026-10-05",pinned:true},
-  {id:"demo-n2",title:"11월 팬미팅 참가 안내",body:"확정 안내는 예약 상태와 알림을 통해 전달됩니다.",category:"행사",createdAt:"2026-10-05"},
-];
+const DEFAULT_INQUIRY_CATEGORIES:InquiryCategory[] = [{id:"event",label:"행사"},{id:"reservation",label:"예약"},{id:"site",label:"사이트 이용"},{id:"etc",label:"기타"}];
 const tabInfo = BOARD_BY_KEY;
 
 function readRoute():RouteState {
@@ -39,7 +36,7 @@ function formatDate(value:string){return new Date(value).toLocaleDateString("ko-
 
 export default function BoardsPage(){
   const [route,setRoute]=useState<RouteState>({tab:"news"});
-  const [news,setNews]=useState<Post[]>(demoNews),[notices,setNotices]=useState<Post[]>(demoNotices),[extraBoards,setExtraBoards]=useState<Record<string,Post[]>>({}),[inquiries,setInquiries]=useState<Inquiry[]>([]);
+  const [news,setNews]=useState<Post[]>([]),[notices,setNotices]=useState<Post[]>([]),[extraBoards,setExtraBoards]=useState<Record<string,Post[]>>({}),[inquiries,setInquiries]=useState<Inquiry[]>([]),[inquiryCategories,setInquiryCategories]=useState<InquiryCategory[]>(DEFAULT_INQUIRY_CATEGORIES);
   const [user,setUser]=useState<User|null>(null),[role,setRole]=useState(""),[permissions,setPermissions]=useState<Permission[]>([]);
   const [logoUrl,setLogoUrl]=useState(LOGO),[siteName,setSiteName]=useState("K-ON! FANDOM KR"),[accent,setAccent]=useState("#ff4f6d");
   const [authMode,setAuthMode]=useState<"login"|"register">("login"),[toast,setToast]=useState(""),[page,setPage]=useState(1),[termsAccepted,setTermsAccepted]=useState(false),[privacyAccepted,setPrivacyAccepted]=useState(false),[authNotice,setAuthNotice]=useState("");
@@ -52,7 +49,8 @@ export default function BoardsPage(){
     const us=onSnapshot(doc(db,"siteSettings","main"),snap=>{if(!snap.exists())return;const data=snap.data();setLogoUrl(String(data.logoUrl||LOGO));setSiteName(String(data.siteName||"K-ON! FANDOM KR"));setAccent(String(data.accentColor||"#ff4f6d"));});
     const un=onSnapshot(query(collection(db,"news"),orderBy("createdAt","desc")),snap=>setNews(snap.docs.map(item=>({id:item.id,...item.data()} as Post))));
     const uo=onSnapshot(query(collection(db,"notices"),orderBy("createdAt","desc")),snap=>setNotices(snap.docs.map(item=>({id:item.id,...item.data()} as Post))));
-    return()=>{ua();us();un();uo();};
+    const uc=onSnapshot(collection(db,"inquiryCategories"),snap=>{const list=snap.docs.map(item=>({id:item.id,...item.data()} as InquiryCategory)).filter(item=>item.active!==false).sort((a,b)=>(a.order??0)-(b.order??0));setInquiryCategories(list.length?list:DEFAULT_INQUIRY_CATEGORIES);});
+    return()=>{ua();us();un();uo();uc();};
   },[]);
   useEffect(()=>{
     if(!db||!firebaseConfigured)return;
@@ -119,12 +117,12 @@ export default function BoardsPage(){
 
       {route.tab==="inquiries"&&!user&&<div className="board-auth"><MessageSquareText/><div><h3>로그인이 필요한 게시판입니다</h3><p>본인이 작성한 문의와 관리자 답변만 안전하게 확인할 수 있습니다.</p></div><form onSubmit={memberAuth}><Input name="email" type="email" placeholder="이메일" required/><Input name="password" type="password" minLength={6} placeholder="비밀번호 (6자 이상)" required/><div className="auth-consents"><label><input type="checkbox" checked={termsAccepted} onChange={e=>setTermsAccepted(e.target.checked)} required={authMode==="register"}/> <a href="/terms" target="_blank" rel="noreferrer">이용약관</a> 동의</label><label><input type="checkbox" checked={privacyAccepted} onChange={e=>setPrivacyAccepted(e.target.checked)} required={authMode==="register"}/> <a href="/privacy" target="_blank" rel="noreferrer">개인정보 처리방침</a> 동의</label></div>{authNotice&&<p className="auth-notice">{authNotice}</p>}<Button>{authMode==="login"?"이메일 로그인":"이메일 회원가입"}</Button></form><div className="auth-divider"><span>또는</span></div><Button type="button" variant="outline" onClick={googleAuth}>Google 계정으로 계속하기</Button><button className="text-link" onClick={()=>{setAuthMode(authMode==="login"?"register":"login");setAuthNotice("")}}>{authMode==="login"?"계정이 없나요? 회원가입":"이미 계정이 있나요? 로그인"}</button></div>}
 
-      {route.tab==="inquiries"&&user&&route.compose&&<article className="board-editor"><a className="back-link" href="#inquiries"><ArrowLeft/>목록으로</a><h2>새 문의 작성</h2><p>답변이 등록되면 계정 알림함과 허용된 브라우저 알림으로 안내합니다.</p><form className="form" onSubmit={createInquiry}><label>분류<select name="category"><option>행사</option><option>예약</option><option>사이트 이용</option><option>기타</option></select></label><label>제목<Input name="title" required/></label><label>문의 내용<Textarea name="body" rows={10} required/></label><Button>문의 등록</Button></form></article>}
+      {route.tab==="inquiries"&&user&&route.compose&&<article className="board-editor"><a className="back-link" href="#inquiries"><ArrowLeft/>목록으로</a><h2>새 문의 작성</h2><p>답변이 등록되면 계정 알림함과 허용된 브라우저 알림으로 안내합니다.</p><form className="form" onSubmit={createInquiry}><label>분류<select name="category">{inquiryCategories.map(category=><option key={category.id} value={category.label}>{category.label}</option>)}</select></label><label>제목<Input name="title" required/></label><label>문의 내용<Textarea name="body" rows={10} required/></label><Button>문의 등록</Button></form></article>}
 
       {route.tab==="inquiries"&&user&&route.itemId&&!route.compose&&<article className="board-article"><a className="back-link" href="#inquiries"><ArrowLeft/>목록으로</a>{selectedInquiry?<><div className="article-meta"><span>{selectedInquiry.category}</span><span className={`status-pill ${selectedInquiry.status}`}>{selectedInquiry.status==="answered"?"답변 완료":"답변 대기"}</span><time>{formatDate(selectedInquiry.createdAt)}</time></div><h2>{selectedInquiry.title}</h2><div className="article-body">{selectedInquiry.body}</div>{selectedInquiry.answer&&<div className="board-answer"><b>관리자 답변</b><p>{selectedInquiry.answer}</p></div>}{isAdmin&&!selectedInquiry.answer&&<form className="form answer-form" onSubmit={answerInquiry}><label>관리자 답변<Textarea name="answer" rows={7} required/></label><Button>답변 등록</Button></form>}</>:<div className="board-empty">문의 글을 찾을 수 없거나 열람 권한이 없습니다.</div>}</article>}
 
       {route.tab==="inquiries"&&user&&!route.itemId&&!route.compose&&<div className="table-wrap board-table"><table><thead><tr><th>분류</th><th>제목</th><th>작성일</th><th>상태</th></tr></thead><tbody>{inquiries.length?inquiries.map(item=><tr key={item.id}><td>{item.category}</td><td><a className="title-button" href={`#inquiries/${item.id}`}>{item.title}</a></td><td>{formatDate(item.createdAt)}</td><td><span className={`status-pill ${item.status}`}>{item.status==="answered"?"답변 완료":"답변 대기"}</span></td></tr>):<tr><td colSpan={4} className="empty-row">등록한 문의가 없습니다.</td></tr>}</tbody></table></div>}
     </section>
-    <footer><div className="brand"><Image src={logoUrl} alt="" width={124} height={44} unoptimized/><span>{siteName}</span></div><p>비공식 팬 커뮤니티 · 관련 권리는 각 권리자에게 있습니다.</p></footer>
+    <footer><div className="brand"><Image src={logoUrl} alt="" width={124} height={44} unoptimized/><span>{siteName}</span></div><p>팬덤 작성 콘텐츠는 각 작성자에게 권리가 있으며, K-ON! 원작·상표·캐릭터의 권리는 각 권리자에게 있습니다. 비영리 비공식 팬 커뮤니티입니다.</p></footer>
   </main>;
 }

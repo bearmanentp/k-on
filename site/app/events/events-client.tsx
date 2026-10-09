@@ -16,14 +16,10 @@ type FormField={id:string;label:string;type:"text"|"email"|"tel"|"textarea"|"sel
 type EventItem={id:string;title:string;date:string;place:string;summary:string;capacity:number;status:"open"|"closed";formSchema:FormField[]};
 type Reservation={id:string;eventTitle:string;createdAt:string;status:string};
 const LOGO="https://upload.wikimedia.org/wikipedia/commons/1/17/K-ON_anime_wordmark.svg";
-const demoEvents:EventItem[]=[
-  {id:"demo-event-1",title:"방과 후 티타임 팬미팅",date:"2026-11-21T14:00",place:"서울 합정",summary:"음악 감상, 팬 토크, 굿즈 교환이 이어지는 하루.",capacity:40,status:"open",formSchema:[{id:"nickname",label:"닉네임",type:"text",required:true},{id:"song",label:"좋아하는 곡",type:"text",required:true},{id:"note",label:"요청사항",type:"textarea",required:false}]},
-  {id:"demo-event-2",title:"경음악부 합주 데이",date:"2026-12-12T13:00",place:"서울 신촌",summary:"실력과 상관없이 함께 K-ON! 곡을 연주하는 오픈 세션.",capacity:20,status:"open",formSchema:[{id:"nickname",label:"닉네임",type:"text",required:true},{id:"instrument",label:"담당 악기",type:"select",required:true,options:["기타","베이스","드럼","키보드","보컬"]}]},
-];
 const statusLabel:Record<string,string>={received:"접수",reviewing:"검토 중",confirmed:"확정",completed:"안내 완료"};
 
 export default function EventsClient(){
-  const [events,setEvents]=useState<EventItem[]>(demoEvents),[selected,setSelected]=useState<EventItem|null>(null),[user,setUser]=useState<User|null>(null),[reservations,setReservations]=useState<Reservation[]>([]),[siteName,setSiteName]=useState("K-ON! FANDOM KR"),[logo,setLogo]=useState(LOGO),[toast,setToast]=useState("");
+  const [events,setEvents]=useState<EventItem[]>([]),[selected,setSelected]=useState<EventItem|null>(null),[user,setUser]=useState<User|null>(null),[reservations,setReservations]=useState<Reservation[]>([]),[siteName,setSiteName]=useState("K-ON! FANDOM KR"),[logo,setLogo]=useState(LOGO),[toast,setToast]=useState("");
   useEffect(()=>{if(!firebaseConfigured||!auth||!db)return;const ua=onAuthStateChanged(auth,next=>setUser(next));const ue=onSnapshot(query(collection(db,"events"),orderBy("date","asc")),snap=>setEvents(snap.docs.map(item=>({id:item.id,...item.data()} as EventItem))));const us=onSnapshot(doc(db,"siteSettings","main"),snap=>{if(!snap.exists())return;const data=snap.data();setSiteName(String(data.siteName||"K-ON! FANDOM KR"));setLogo(String(data.logoUrl||LOGO));});return()=>{ua();ue();us();};},[]);
   useEffect(()=>{if(!db||!user)return;return onSnapshot(query(collection(db,"reservations"),where("userId","==",user.uid)),snap=>setReservations(snap.docs.map(item=>({id:item.id,...item.data()} as Reservation)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))));},[user]);
   async function eventLogin(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!auth)return;const data=new FormData(e.currentTarget);try{await loginWithEmail(auth,String(data.get("email")),String(data.get("password")));setToast("로그인했습니다.");}catch(error){setToast(authErrorMessage(error));}}
