@@ -428,6 +428,9 @@ function ProductForm() {
       />
       <NumberInput source="price" label="가격" min={0} />
       <TextInput source="imageUrl" label="이미지 URL" fullWidth />
+      <TextInput source="bankName" label="상품별 은행명" helperText="입력하면 이 상품 주문에만 적용됩니다." fullWidth />
+      <TextInput source="accountNumber" label="상품별 계좌번호" helperText="비워 두면 상점 공통 입금 계좌를 사용합니다." fullWidth />
+      <TextInput source="accountHolder" label="상품별 예금주" fullWidth />
     </SimpleForm>
   );
 }
@@ -462,21 +465,14 @@ function ProductCreate() {
 }
 function SiteSettingsList() {
   return (
-    <List pagination={false} sort={{ field: "updatedAt", order: "DESC" }}>
-      <Datagrid rowClick="edit">
-        <TextField source="siteName" label="사이트 이름" />
-        <TextField source="fontFamily" label="전체 글꼴" />
-        <TextField source="accentColor" label="강조 색상" />
-        <DateField source="updatedAt" label="마지막 변경" showTime />
-        <EditButton />
-      </Datagrid>
-    </List>
+    <Edit id="main" title="사이트 디자인" redirect={false}>
+      <SiteSettingsForm />
+    </Edit>
   );
 }
-function SiteSettingsEdit() {
+function SiteSettingsForm() {
   return (
-    <Edit>
-      <SimpleForm>
+    <SimpleForm>
         <TextInput source="siteName" label="사이트 이름" fullWidth />
         <TextInput
           source="logoUrl"
@@ -558,7 +554,13 @@ function SiteSettingsEdit() {
           helperText="이름 | 이미지 URL | 출처 URL 형식으로 한 줄에 한 명씩 입력하세요."
         />
         <TextInput source="communityMessage" label="커뮤니티 문구" fullWidth />
-      </SimpleForm>
+    </SimpleForm>
+  );
+}
+function SiteSettingsEdit() {
+  return (
+    <Edit>
+      <SiteSettingsForm />
     </Edit>
   );
 }

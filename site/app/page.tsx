@@ -1230,7 +1230,7 @@ export default function Home() {
         <h2>{site.communityMessage}</h2>
         <p>공식 작품과 권리자를 존중하는 비영리 팬 커뮤니티입니다.</p>
       </section>
-      <footer>
+      <footer className="site-footer">
         <div className="brand">
           <Image
             src={site.logoUrl}

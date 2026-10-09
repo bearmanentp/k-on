@@ -16,6 +16,7 @@ import { generateHTML } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { BOARD_BY_KEY, BOARD_DEFINITIONS, type BoardDefinition, type BoardKey } from "@/lib/board-config";
 import { authErrorMessage, loginWithEmail, loginWithGoogle, registerWithEmail } from "@/lib/auth";
+import { PublicHeader } from "@/app/components/public-header";
 
 type BoardTab = BoardKey;
 type Permission = "design" | "events" | "notices" | "applications" | "users" | "points";
@@ -107,7 +108,7 @@ export default function BoardsPage(){
 
   const CurrentIcon=boardByKey[route.tab].icon;
   return <main className="boards-page" style={{"--accent":accent} as CSSProperties}>
-    <header className="site-header boards-header"><Link href="/" className="brand"><Image src={logoUrl} alt="K-ON!" width={124} height={44} unoptimized/><span>{siteName}</span></Link><nav className="desktop-nav"><Link href="/">홈</Link><Link href="/#about">소개</Link><Link href="/#site-map">둘러보기</Link><Link href="/#characters">캐릭터</Link><Link href="/#events">행사·예약</Link><details className="nav-dropdown"><summary>커뮤니티</summary><div>{boardDefinitions.map(({key,menuLabel,icon:Icon})=><Link href={`/boards#${key}`} key={key}><Icon/>{menuLabel}</Link>)}</div></details></nav><details className="mobile-nav"><summary aria-label="전체 메뉴 열기"><span className="toggler-icon" aria-hidden="true"><i/><i/><i/></span><span className="sr-menu-label">메뉴</span></summary><div><Link href="/">홈</Link><Link href="/#about">소개</Link><Link href="/#site-map">둘러보기</Link><Link href="/#characters">캐릭터</Link><Link href="/#events">행사·예약</Link><details className="mobile-community"><summary><Newspaper/>커뮤니티</summary><div>{boardDefinitions.map(({key,menuLabel,icon:Icon})=><Link href={`/boards#${key}`} key={key}><Icon/>{menuLabel}</Link>)}</div></details></div></details><div className="header-actions">{user?<Button variant="outline" onClick={()=>auth&&signOut(auth)}><LogOut/>로그아웃</Button>:<span className="member-state"><CircleUserRound/>비회원</span>}</div></header>
+    <PublicHeader siteName={siteName} logoUrl={logoUrl} active="boards" boards={boardDefinitions} actions={user?<Button variant="outline" onClick={()=>auth&&signOut(auth)}><LogOut/>로그아웃</Button>:<span className="member-state"><CircleUserRound/>비회원</span>}/>
     {!firebaseConfigured&&<div className="setup-banner">미리보기 모드 · Firebase 연결 후 로그인과 문의 기능이 활성화됩니다.</div>}
     {toast&&<button className="toast" onClick={()=>setToast("")}>{toast}</button>}
 
@@ -129,6 +130,6 @@ export default function BoardsPage(){
 
       {route.tab==="inquiries"&&user&&!route.itemId&&!route.compose&&<div className="table-wrap board-table"><table><thead><tr><th>분류</th><th>제목</th><th>작성일</th><th>상태</th></tr></thead><tbody>{inquiries.length?inquiries.map(item=><tr key={item.id}><td>{item.category}</td><td><a className="title-button" href={`#inquiries/${item.id}`}>{item.title}</a></td><td>{formatDate(item.createdAt)}</td><td><span className={`status-pill ${item.status}`}>{item.status==="answered"?"답변 완료":"답변 대기"}</span></td></tr>):<tr><td colSpan={4} className="empty-row">등록한 문의가 없습니다.</td></tr>}</tbody></table></div>}
     </section>
-    <footer><div className="brand"><Image src={logoUrl} alt="" width={124} height={44} unoptimized/><span>{siteName}</span></div><p>팬덤 작성 콘텐츠는 각 작성자에게 권리가 있으며, K-ON! 원작·상표·캐릭터의 권리는 각 권리자에게 있습니다. 비영리 비공식 팬 커뮤니티입니다.</p></footer>
+    <footer className="site-footer"><div className="brand"><Image src={logoUrl} alt="" width={124} height={44} unoptimized/><span>{siteName}</span></div><p>팬덤 작성 콘텐츠는 각 작성자에게 권리가 있으며, K-ON! 원작·상표·캐릭터의 권리는 각 권리자에게 있습니다. 비영리 비공식 팬 커뮤니티입니다.</p></footer>
   </main>;
 }
