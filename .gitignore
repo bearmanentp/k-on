@@ -1,0 +1,57 @@
+# 공개 저장소에 올리지 않는 로컬/비밀 설정
+.env
+.env.*
+!.env.example
+*.local
+*.secret
+*.secrets
+*.pem
+*.key
+*.p12
+*.pfx
+service-account*.json
+*-firebase-adminsdk-*.json
+credentials*.json
+firebase-adminsdk-*.json
+
+# Firebase 로컬 에뮬레이터/생성 파일
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+functions-debug.log*
+site/public/firebase-messaging-sw.js
+
+# 의존성 및 빌드/캐시 산출물
+**/node_modules/
+**/.next/
+**/.vinext/
+**/dist/
+**/build/
+**/out/
+**/.wrangler/
+**/.sites-runtime/
+**/.openai/
+**/.codex/
+**/.agents/
+**/coverage/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 운영체제/에디터 파일
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 내부 작업 문서와 설정 설명은 공개 저장소에 올리지 않음.
+# 공개 설명은 저장소 루트 README.md만 예외로 허용한다.
+*.md
+!/README.md

@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function has(permission) {
+      return signedIn() && (
+        request.auth.token.role == 'owner'
+        || (request.auth.token.permissions is list && permission in request.auth.token.permissions)
+      );
+    }
+    match /siteSettings/{id} {
+      allow read: if true;
+      allow write: if has('design');
+    }
+    match /events/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('events');
+    }
+    match /notices/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('notices');
+    }
+    match /news/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('notices');
+    }
+    match /ads/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('design') || has('notices');
+    }
+    match /applications/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['eventId','eventTitle','answers','createdAt','status'])
+        && request.resource.data.status == 'received';
+      allow read, update, delete: if has('applications');
+    }
+    match /adminNotices/{id} {
+      allow read: if signedIn() && (
+        request.auth.token.role == 'owner'
+        || resource.data.audiences.hasAny(['all', request.auth.token.role])
+        || resource.data.audiences.hasAny(request.auth.token.permissions)
+      );
+      allow create, update, delete: if has('users');
+    }
+    match /inquiries/{id} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'waiting';
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('applications'));
+      allow update, delete: if has('applications');
+    }
+    match /reservations/{id} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'received';
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('applications') || has('events'));
+      allow update, delete: if has('applications') || has('events');
+    }
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['email', 'fcmTokens'])
+        && request.resource.data.email == request.auth.token.email;
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'fcmTokens'])
+        && request.resource.data.email == request.auth.token.email;
+      allow read: if has('users');
+    }
+    match /pointHistory/{id} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('users') || has('points'));
+      allow write: if false;
+    }
+    match /accountMessages/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']);
+      allow create: if has('applications') || has('events');
+      allow read: if has('applications') || has('events');
+    }
+    match /adminDirectory/{uid} {
+      allow read: if signedIn() && request.auth.token.role == 'owner';
+      allow write: if false;
+    }
+    match /adminAlerts/{id} {
+      allow read: if has('design') || has('events') || has('notices') || has('applications') || has('users') || has('points');
+      allow write: if false;
+    }
+    match /systemMetrics/{id} {
+      allow read: if has('design') || has('events') || has('notices') || has('applications') || has('users') || has('points');
+      allow write: if false;
+    }
+  }
+}

@@ -1,0 +1,13 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function hasDesign() {
+      return request.auth != null && (request.auth.token.role == 'owner' || 'design' in request.auth.token.permissions);
+    }
+    match /site/{allPaths=**} {
+      allow read: if true;
+      allow write: if hasDesign() && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}
