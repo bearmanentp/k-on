@@ -20,7 +20,7 @@ import { authErrorMessage, loginWithEmail, loginWithGoogle, registerWithEmail } 
 type BoardTab = BoardKey;
 type Permission = "design" | "events" | "notices" | "applications" | "users" | "points";
 type Post = { id:string; title:string; body:string; bodyRich?:unknown; category:string; createdAt:string; pinned?:boolean };
-type Inquiry = { id:string; userId:string; userEmail:string; title:string; body:string; category:string; createdAt:string; status:"waiting"|"answered"; answer?:string };
+type Inquiry = { id:string; userId:string; userEmail:string; title:string; body:string; category:string; createdAt:string; status:"waiting"|"answered"; answer?:string; private?:boolean };
 type InquiryCategory = { id:string; label:string; description?:string; active?:boolean; order?:number };
 type RouteState = { tab:BoardTab; itemId?:string; compose?:boolean };
 
@@ -91,7 +91,7 @@ export default function BoardsPage(){
     e.preventDefault();
     if(!user||!db)return;
     const form=new FormData(e.currentTarget);
-    const created=await addDoc(collection(db,"inquiries"),{userId:user.uid,userEmail:user.email,title:String(form.get("title")),body:String(form.get("body")),category:String(form.get("category")),createdAt:new Date().toISOString(),status:"waiting"});
+    const created=await addDoc(collection(db,"inquiries"),{userId:user.uid,userEmail:user.email,title:String(form.get("title")),body:String(form.get("body")),category:String(form.get("category")),private:form.get("private")==="on",createdAt:new Date().toISOString(),status:"waiting"});
     setToast("문의가 등록되었습니다.");
     window.location.hash=`inquiries/${created.id}`;
   }
@@ -99,7 +99,7 @@ export default function BoardsPage(){
     e.preventDefault();
     if(!db||!selectedInquiry||!isAdmin)return;
     const form=new FormData(e.currentTarget);
-    await updateDoc(doc(db,"inquiries",selectedInquiry.id),{answer:String(form.get("answer")),status:"answered",answeredAt:new Date().toISOString()});
+    await updateDoc(doc(db,"inquiries",selectedInquiry.id),{answer:String(form.get("answer")),status:"answered",private:true,answeredAt:new Date().toISOString()});
     setToast("답변을 등록했습니다.");
   }
 
@@ -121,7 +121,7 @@ export default function BoardsPage(){
 
       {route.tab==="inquiries"&&!user&&<div className="board-auth"><MessageSquareText/><div><h3>로그인이 필요한 게시판입니다</h3><p>본인이 작성한 문의와 관리자 답변만 안전하게 확인할 수 있습니다.</p></div><form onSubmit={memberAuth}><Input name="email" type="email" placeholder="이메일" required/><Input name="password" type="password" minLength={6} placeholder="비밀번호 (6자 이상)" required/><div className="auth-consents"><label><input type="checkbox" checked={termsAccepted} onChange={e=>setTermsAccepted(e.target.checked)} required={authMode==="register"}/> <a href="/terms" target="_blank" rel="noreferrer">이용약관</a> 동의</label><label><input type="checkbox" checked={privacyAccepted} onChange={e=>setPrivacyAccepted(e.target.checked)} required={authMode==="register"}/> <a href="/privacy" target="_blank" rel="noreferrer">개인정보 처리방침</a> 동의</label></div>{authNotice&&<p className="auth-notice">{authNotice}</p>}<Button>{authMode==="login"?"이메일 로그인":"이메일 회원가입"}</Button></form><div className="auth-divider"><span>또는</span></div><Button type="button" variant="outline" onClick={googleAuth}>Google 계정으로 계속하기</Button><button className="text-link" onClick={()=>{setAuthMode(authMode==="login"?"register":"login");setAuthNotice("")}}>{authMode==="login"?"계정이 없나요? 회원가입":"이미 계정이 있나요? 로그인"}</button></div>}
 
-      {route.tab==="inquiries"&&user&&route.compose&&<article className="board-editor"><a className="back-link" href="#inquiries"><ArrowLeft/>목록으로</a><h2>새 문의 작성</h2><p>답변이 등록되면 계정 알림함과 허용된 브라우저 알림으로 안내합니다.</p><form className="form" onSubmit={createInquiry}><label>분류<select name="category">{inquiryCategories.map(category=><option key={category.id} value={category.label}>{category.label}</option>)}</select></label><label>제목<Input name="title" required/></label><label>문의 내용<Textarea name="body" rows={10} required/></label><Button>문의 등록</Button></form></article>}
+      {route.tab==="inquiries"&&user&&route.compose&&<article className="board-editor"><a className="back-link" href="#inquiries"><ArrowLeft/>목록으로</a><h2>새 문의 작성</h2><p>답변이 등록되면 계정 알림함과 허용된 브라우저 알림으로 안내합니다.</p><form className="form" onSubmit={createInquiry}><label>분류<select name="category">{inquiryCategories.map(category=><option key={category.id} value={category.label}>{category.label}</option>)}</select></label><label>제목<Input name="title" required/></label><label>문의 내용<Textarea name="body" rows={10} required/></label><label className="check-line"><input name="private" type="checkbox"/> 비공개 문의로 등록</label><Button>문의 등록</Button></form></article>}
 
       {route.tab==="inquiries"&&user&&route.itemId&&!route.compose&&<article className="board-article"><a className="back-link" href="#inquiries"><ArrowLeft/>목록으로</a>{selectedInquiry?<><div className="article-meta"><span>{selectedInquiry.category}</span><span className={`status-pill ${selectedInquiry.status}`}>{selectedInquiry.status==="answered"?"답변 완료":"답변 대기"}</span><time>{formatDate(selectedInquiry.createdAt)}</time></div><h2>{selectedInquiry.title}</h2><div className="article-body">{selectedInquiry.body}</div>{selectedInquiry.answer&&<div className="board-answer"><b>관리자 답변</b><p>{selectedInquiry.answer}</p></div>}{isAdmin&&!selectedInquiry.answer&&<form className="form answer-form" onSubmit={answerInquiry}><label>관리자 답변<Textarea name="answer" rows={7} required/></label><Button>답변 등록</Button></form>}</>:<div className="board-empty">문의 글을 찾을 수 없거나 열람 권한이 없습니다.</div>}</article>}
 

@@ -7,7 +7,7 @@ import { auth, db } from "@/lib/firebase";
 
 const permissionByResource:Record<string,string> = {
   notices:"notices", news:"notices", events:"events", inquiries:"applications",
-  reservations:"applications", ads:"design", adminDirectory:"users", siteSettings:"design", boardDefinitions:"notices", boardPosts:"notices",
+  reservations:"applications", ads:"design", products:"design", adminDirectory:"users", siteSettings:"design", boardDefinitions:"notices", boardPosts:"notices",
 };
 
 function requireDb(){if(!db)throw new Error("Firebase가 연결되지 않았습니다.");return db;}
