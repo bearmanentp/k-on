@@ -8,12 +8,22 @@ import {
   signOut,
   User,
 } from "firebase/auth";
-import { doc, Firestore, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, Firestore, getDoc, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 import { resolvedPointSettings } from "@/lib/points";
 
 export const googleProvider = new GoogleAuthProvider();
 
 const NICKNAME_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function ensureMemberProfile(firestore: Firestore, user: User) {
+  const userRef = doc(firestore, "users", user.uid);
+  const snapshot = await getDoc(userRef);
+  if (snapshot.exists()) return;
+  await setDoc(userRef, {
+    email: user.email || "",
+    joinedAt: serverTimestamp(),
+  });
+}
 
 function normalizeNickname(value: string) {
   return value.normalize("NFC").replace(/\s+/g, " ").trim();
@@ -118,17 +128,19 @@ export async function registerWithEmail(auth: Auth, firestore: Firestore, email:
   return credential.user;
 }
 
-export async function loginWithEmail(auth: Auth, email: string, password: string): Promise<User> {
+export async function loginWithEmail(auth: Auth, email: string, password: string, firestore?: Firestore): Promise<User> {
   const credential = await signInWithEmailAndPassword(auth, email, password);
   if (!credential.user.emailVerified) {
     await signOut(auth);
     throw new Error("EMAIL_NOT_VERIFIED");
   }
+  if (firestore) await ensureMemberProfile(firestore, credential.user);
   return credential.user;
 }
 
-export async function loginWithGoogle(auth: Auth): Promise<User> {
+export async function loginWithGoogle(auth: Auth, firestore?: Firestore): Promise<User> {
   const credential = await signInWithPopup(auth, googleProvider);
+  if (firestore) await ensureMemberProfile(firestore, credential.user);
   return credential.user;
 }
 

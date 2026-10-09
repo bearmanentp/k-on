@@ -445,6 +445,7 @@ export default function Home() {
           auth,
           String(f.get("email")),
           String(f.get("password")),
+          db || undefined,
         );
         setAuthOpen(false);
         setToast("로그인했습니다.");
@@ -461,7 +462,7 @@ export default function Home() {
         "Google 로그인·가입 전에도 이용약관과 개인정보 처리방침에 동의해 주세요.",
       );
     try {
-      const googleUser = await loginWithGoogle(auth);
+      const googleUser = await loginWithGoogle(auth, db || undefined);
       const profile = db
         ? await getDoc(doc(db, "users", googleUser.uid))
         : null;

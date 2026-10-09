@@ -96,10 +96,10 @@ export default function BoardsPage(){
     const form=new FormData(e.currentTarget);
     try{
       if(authMode==="register"){if(!termsAccepted||!privacyAccepted)return setAuthNotice("이용약관과 개인정보 처리방침에 모두 동의해 주세요.");if(!db)return setAuthNotice("Firebase 데이터베이스 연결 후 회원가입할 수 있습니다.");const requestedNickname=String(form.get("nickname")||window.prompt("가입에 사용할 닉네임을 입력해 주세요.")||"").trim();if(!requestedNickname)return setAuthNotice("닉네임을 입력해 주세요.");await registerWithEmail(auth,db,String(form.get("email")),String(form.get("password")),requestedNickname,String(form.get("referralCode")||""));setToast("인증 메일을 보냈습니다. 이메일 인증 후 로그인해 주세요.");}
-      else {await loginWithEmail(auth,String(form.get("email")),String(form.get("password")));setToast("로그인했습니다.");}
+      else {await loginWithEmail(auth,String(form.get("email")),String(form.get("password")),db||undefined);setToast("로그인했습니다.");}
     }catch(error){setAuthNotice("");setToast(authErrorMessage(error));}
   }
-  async function googleAuth(){if(!auth)return setToast("Firebase 연결 후 로그인할 수 있습니다.");if(!termsAccepted||!privacyAccepted)return setAuthNotice("Google 로그인·가입 전에도 약관 동의가 필요합니다.");try{await loginWithGoogle(auth);setToast("Google 계정으로 로그인했습니다.");}catch(error){setToast(authErrorMessage(error));}}
+  async function googleAuth(){if(!auth)return setToast("Firebase 연결 후 로그인할 수 있습니다.");if(!termsAccepted||!privacyAccepted)return setAuthNotice("Google 로그인·가입 전에도 약관 동의가 필요합니다.");try{await loginWithGoogle(auth,db||undefined);setToast("Google 계정으로 로그인했습니다.");}catch(error){setToast(authErrorMessage(error));}}
   async function createInquiry(e:FormEvent<HTMLFormElement>){
     e.preventDefault();
     if(!user||!db)return;
