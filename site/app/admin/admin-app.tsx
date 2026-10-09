@@ -13,6 +13,30 @@ import { AdminDashboard } from "./dashboard";
 
 const searchFilters=[<TextInput key="q" source="q" label="검색" alwaysOn/>];
 
+const adminTheme = {
+  palette: {
+    mode: "light" as const,
+    primary: { main: "#a65d67", contrastText: "#fffaf7" },
+    secondary: { main: "#d49a62", contrastText: "#3e2824" },
+    background: { default: "#f7efe8", paper: "#fffdf9" },
+    text: { primary: "#3e2824", secondary: "#806b66" },
+  },
+  shape: { borderRadius: 16 },
+  typography: {
+    fontFamily: '"Pretendard", "Noto Sans KR", system-ui, sans-serif',
+    h6: { fontWeight: 800 },
+    button: { fontWeight: 800, textTransform: "none" as const },
+  },
+  components: {
+    MuiAppBar: { styleOverrides: { root: { background: "#fffdf9", color: "#3e2824", boxShadow: "0 1px 0 #ead8cf" } } },
+    MuiDrawer: { styleOverrides: { paper: { background: "#fff8f1", borderRight: "1px solid #ead8cf" } } },
+    MuiButton: { styleOverrides: { root: { borderRadius: 12, boxShadow: "none" } } },
+    MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
+    MuiTableCell: { styleOverrides: { head: { color: "#806b66", fontWeight: 800, background: "#fff5ed" }, root: { borderColor: "#f0dfd5" } } },
+    MuiTextField: { defaultProps: { variant: "outlined" as const, size: "small" as const } },
+  },
+};
+
 function PostList(){return <List filters={searchFilters} sort={{field:"createdAt",order:"DESC"}}><Datagrid rowClick="edit"><BooleanField source="pinned" label="필독"/><TextField source="category" label="분류"/><TextField source="title" label="제목"/><DateField source="createdAt" label="작성일"/><EditButton/><DeleteButton/></Datagrid></List>;}
 function PostForm(){return <SimpleForm><TextInput source="category" label="분류" validate={required()} fullWidth/><TextInput source="title" label="제목" validate={required()} fullWidth/><BooleanInput source="pinned" label="필독 고정"/><RichTextInput/></SimpleForm>;}
 function NoticeEdit(){return <Edit><PostForm/></Edit>;}
@@ -31,4 +55,4 @@ function AdForm(){return <SimpleForm><BooleanInput source="active" label="광고
 function AdEdit(){return <Edit><AdForm/></Edit>;}
 function AdCreate(){return <Create><AdForm/></Create>;}
 
-export default function AdminApp(){return <HashRouter><Admin title="K-ON! 관리자" dashboard={AdminDashboard} dataProvider={firebaseDataProvider} authProvider={firebaseAuthProvider} requireAuth disableTelemetry><Resource name="notices" options={{label:"공지"}} icon={Megaphone} list={PostList} edit={NoticeEdit} create={NoticeCreate}/><Resource name="news" options={{label:"소식"}} icon={Newspaper} list={PostList} edit={NewsEdit} create={NewsCreate}/><Resource name="events" options={{label:"행사·신청폼"}} icon={CalendarDays} list={EventList} edit={EventEdit}/><Resource name="inquiries" options={{label:"문의"}} icon={HelpCircle} list={InquiryList} edit={InquiryEdit}/><Resource name="reservations" options={{label:"예약"}} icon={ClipboardList} list={ReservationList} edit={ReservationEdit}/><Resource name="ads" options={{label:"수동 광고"}} icon={Ticket} list={AdList} edit={AdEdit} create={AdCreate}/><Resource name="adminDirectory" options={{label:"관리자 권한"}} icon={ShieldCheck} list={AdminList}/></Admin></HashRouter>;}
+export default function AdminApp(){return <HashRouter><Admin title="K-ON! 관리자" theme={adminTheme} dashboard={AdminDashboard} dataProvider={firebaseDataProvider} authProvider={firebaseAuthProvider} requireAuth disableTelemetry><Resource name="notices" options={{label:"공지"}} icon={Megaphone} list={PostList} edit={NoticeEdit} create={NoticeCreate}/><Resource name="news" options={{label:"소식"}} icon={Newspaper} list={PostList} edit={NewsEdit} create={NewsCreate}/><Resource name="events" options={{label:"행사·신청폼"}} icon={CalendarDays} list={EventList} edit={EventEdit}/><Resource name="inquiries" options={{label:"문의"}} icon={HelpCircle} list={InquiryList} edit={InquiryEdit}/><Resource name="reservations" options={{label:"예약"}} icon={ClipboardList} list={ReservationList} edit={ReservationEdit}/><Resource name="ads" options={{label:"수동 광고"}} icon={Ticket} list={AdList} edit={AdEdit} create={AdCreate}/><Resource name="adminDirectory" options={{label:"관리자 권한"}} icon={ShieldCheck} list={AdminList}/></Admin></HashRouter>;}

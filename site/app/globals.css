@@ -79,3 +79,29 @@ body{background-color:var(--tea-cream);background-image:radial-gradient(#efd9d02
 .policy-page{min-height:100vh;padding:48px 20px;background:var(--tea-cream);color:var(--tea-brown)}.policy-card{width:min(760px,100%);margin:auto;padding:clamp(26px,5vw,56px);border:1px solid var(--tea-line);border-radius:24px;background:var(--tea-paper);box-shadow:0 8px 0 #efd8ce}.policy-card>a{color:var(--tea-rose);font-weight:800;text-decoration:none}.policy-eyebrow{margin:56px 0 8px;color:var(--tea-rose);font-size:.74rem;font-weight:900;letter-spacing:.16em}.policy-card h1{margin:0 0 22px;font-size:clamp(2.2rem,6vw,4rem);letter-spacing:-.07em}.policy-card h2{margin:30px 0 8px;font-size:1.15rem}.policy-card p{color:#80655d;line-height:1.85}
 @media(max-width:900px){.point-manager{grid-template-columns:1fr}.points-badge{display:none}.character-grid{gap:14px}.character-card{min-height:360px}}
 @media(max-width:620px){[data-slot="dialog-content"]{border-radius:20px;padding:22px 18px;gap:4px}[data-slot="dialog-content"] [data-slot="dialog-header"]{padding-right:38px;padding-bottom:12px}[data-slot="dialog-content"] [data-slot="dialog-title"]{font-size:1.25rem}[data-slot="dialog-content"] .choice-row{display:grid;gap:9px}.admin-dialog{max-width:calc(100vw - 20px);padding:18px 14px}.admin-dialog [data-slot="dialog-header"]{padding-left:4px}.admin-tabs{margin-inline:-4px;width:calc(100% + 8px)}}
+
+/* 관리자 작업 공간 */
+.RaLayout-root{background:var(--tea-cream);min-height:100vh}
+.RaLayout-content{padding:0 28px 36px}
+.RaAppBar-root{min-height:70px!important}
+.RaAppBar-toolbar{padding-inline:28px!important}
+.RaAppBar-toolbar h6{font-size:1.05rem;letter-spacing:-.02em}
+.RaSidebar-fixed{border-right:0!important}
+.RaSidebar-fixed .MuiDrawer-paper{box-shadow:4px 0 24px rgba(111,72,61,.07);padding-top:10px}
+.RaMenu-root{padding:12px 10px}
+.RaMenuItemLink-root{border-radius:12px!important;margin:3px 0;color:#6e534d!important;font-weight:700!important}
+.RaMenuItemLink-root.Mui-selected{background:#f2d6ca!important;color:#8f4f59!important}
+.RaMenuItemLink-root:hover{background:#fff0e7!important}
+.RaList-main,.RaCreate-main,.RaEdit-main{max-width:1500px;margin:0 auto}
+.RaList-main .MuiToolbar-root{padding:20px 0 14px;gap:10px}
+.RaList-main .MuiToolbar-root h1{font-size:1.45rem;font-weight:900;color:#3e2824}
+.RaList-content,.RaCreate-main .MuiCard-root,.RaEdit-main .MuiCard-root{border:1px solid var(--tea-line);border-radius:18px!important;background:var(--tea-paper)!important;box-shadow:0 6px 0 #efd8ce!important;overflow:hidden}
+.RaList-content .MuiTable-root{min-width:720px}
+.RaDatagrid-headerCell{background:#fff5ed!important;color:#806b66!important;font-weight:900!important}
+.RaDatagrid-row:hover{background:#fff8f2!important}
+.RaList-main .MuiTablePagination-root{background:#fffaf5}
+.RaCreate-main .MuiCardContent-root,.RaEdit-main .MuiCardContent-root{padding:28px!important}
+.RaSimpleFormIterator-line{border-color:var(--tea-line)!important}
+.RaButton-button{border-radius:11px!important}
+.RaButton-addButton{background:#a65d67!important;color:#fff!important}
+@media(max-width:700px){.RaLayout-content{padding:0 12px 24px}.RaAppBar-toolbar{padding-inline:16px!important}.RaList-main .MuiToolbar-root{padding-top:14px}.RaCreate-main .MuiCardContent-root,.RaEdit-main .MuiCardContent-root{padding:18px!important}.RaList-content{overflow-x:auto}}
