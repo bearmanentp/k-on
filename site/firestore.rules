@@ -208,7 +208,14 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'waiting';
       allow read: if signedIn() && (!resource.data.private || resource.data.userId == request.auth.uid || has('applications'));
-      allow update, delete: if has('applications');
+      allow update: if has('applications') || (
+        signedIn()
+        && resource.data.userId == request.auth.uid
+        && resource.data.status == 'waiting'
+        && request.resource.data.status == 'canceled'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'canceledAt'])
+      );
+      allow delete: if has('applications');
     }
     match /inquiryCategories/{id} {
       allow read: if true;

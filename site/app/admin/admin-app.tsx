@@ -203,7 +203,7 @@ function EventList() {
         <TextField source="place" label="장소" />
         <TextField source="bookingType" label="예매 방식" />
         <NumberField source="capacity" label="정원" />
-        <TextField source="status" label="상태" />
+        <FunctionField label="상태" render={(record:{status?:string})=>record.status==="answered"?"답변 완료":record.status==="canceled"?"문의 취소":"답변 대기"} />
         <EditButton />
         <DeleteButton />
       </Datagrid>
@@ -295,6 +295,7 @@ function InquiryEdit() {
           choices={[
             { id: "waiting", name: "답변 대기" },
             { id: "answered", name: "답변 완료" },
+            { id: "canceled", name: "문의 취소" },
           ]}
         />
       </SimpleForm>
@@ -565,6 +566,18 @@ function ShopForm(){return <SimpleForm defaultValues={{active:true,order:10,mana
 function ShopCreate(){return <Create><ShopForm/></Create>}
 function ShopEdit(){return <Edit><ShopForm/></Edit>}
 type SiteDesignState={siteName:string;logoUrl:string;fontFamily:string;accentColor:string;heroEyebrow:string;heroTitle:string;heroDescription:string;heroImages:string;characterImages:string;communityMessage:string};
+const SITE_FONT_CHOICES=[
+  {id:'"Pretendard", "Noto Sans KR", system-ui, sans-serif',name:"기본 · Pretendard"},
+  {id:'"Noto Sans KR", sans-serif',name:"Noto Sans KR"},
+  {id:'system-ui, sans-serif',name:"시스템 고딕"},
+  {id:'"Noto Serif KR", Georgia, serif',name:"Noto Serif KR · 명조"},
+  {id:'Georgia, "Times New Roman", serif',name:"Georgia · 세리프"},
+  {id:'"Dongle", "Noto Sans KR", sans-serif',name:"Dongle · 귀여운 둥근 글꼴"},
+  {id:'"Gaegu", cursive',name:"Gaegu · 귀여운 필기체"},
+  {id:'"Hi Melody", cursive',name:"Hi Melody · 부드러운 손글씨"},
+  {id:'"Nanum Pen Script", cursive',name:"나눔펜 · 펜글씨"},
+  {id:'"Poor Story", cursive',name:"Poor Story · 자연스러운 손글씨"},
+];
 const DEFAULT_SITE_DESIGN:SiteDesignState={siteName:"K-ON! FANDOM KR",logoUrl:DEFAULT_K_ON_LOGO,fontFamily:'"Pretendard", "Noto Sans KR", system-ui, sans-serif',accentColor:"#ff4f6d",heroEyebrow:"AFTER SCHOOL, TOGETHER",heroTitle:"좋아하는 음악으로\n다시 만나는 우리",heroDescription:"K-ON!의 음악과 일상을 함께 기억하고 새로운 순간을 만드는 한국 팬 커뮤니티.",heroImages:"/hero-music-room.png",characterImages:DEFAULT_CHARACTER_IMAGE_LINES,communityMessage:"좋아하는 마음은 시간이 지나도 계속 연주됩니다."};
 function SiteSettingsList() {
   const [values,setValues]=useState(DEFAULT_SITE_DESIGN),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false);
@@ -575,8 +588,9 @@ function SiteSettingsList() {
   async function save(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!db)return notify("Firebase가 연결되지 않았습니다.",{type:"error"});setSaving(true);try{const heroImages=values.heroImages.split("\n").map(item=>item.trim()).filter(Boolean),parsedCharacters=values.characterImages.split("\n").map(item=>item.trim()).filter(Boolean).map(item=>{const [name,url,source]=item.split("|").map(part=>part.trim());return{name,url,source};}).filter(item=>item.name&&item.url),characterImages=parsedCharacters.length?parsedCharacters:DEFAULT_CHARACTER_IMAGES;await setDoc(doc(db,"siteSettings","main"),{...values,logoUrl:values.logoUrl.trim()||DEFAULT_K_ON_LOGO,heroImages,characterImages,updatedAt:new Date().toISOString()},{merge:true});notify("사이트 디자인을 저장했습니다.",{type:"success"});}catch{notify("사이트 디자인 저장에 실패했습니다.",{type:"error"});}finally{setSaving(false);}}
   if(loading)return <section className="site-design-editor"><p>사이트 디자인 설정을 불러오는 중입니다…</p></section>;
   const previewImage=values.heroImages.split("\n").map(item=>item.trim()).find(Boolean);
+  const fontChoices=SITE_FONT_CHOICES.some(item=>item.id===values.fontFamily)?SITE_FONT_CHOICES:[...SITE_FONT_CHOICES,{id:values.fontFamily,name:"현재 사용자 지정 글꼴"}];
   return <section className="site-design-editor"><header><small>SITE APPEARANCE</small><h1>사이트 디자인</h1><p>홈페이지의 로고, 글꼴, 색상과 히어로 배너를 여기에서 바로 변경합니다.</p></header><form onSubmit={save}>
-    <fieldset><legend>브랜드와 전체 스타일</legend><label>사이트 이름<input value={values.siteName} onChange={event=>change("siteName")(event.target.value)}/></label><label>로고 이미지 URL<input value={values.logoUrl} onChange={event=>change("logoUrl")(event.target.value)} placeholder="https://..."/></label><label>전체 글꼴<input list="site-font-presets" value={values.fontFamily} onChange={event=>change("fontFamily")(event.target.value)}/><datalist id="site-font-presets"><option value={'"Pretendard", "Noto Sans KR", sans-serif'}/><option value={'"Noto Sans KR", sans-serif'}/><option value={'Georgia, "Times New Roman", serif'}/><option value={'system-ui, sans-serif'}/></datalist><small>CSS font-family 값을 입력하거나 추천 항목을 선택하세요.</small></label><label>강조 색상<div className="site-color-control"><input type="color" value={/^#[0-9a-f]{6}$/i.test(values.accentColor)?values.accentColor:"#ff4f6d"} onChange={event=>change("accentColor")(event.target.value)}/><input value={values.accentColor} onChange={event=>change("accentColor")(event.target.value)} placeholder="#ff4f6d"/></div></label></fieldset>
+    <fieldset><legend>브랜드와 전체 스타일</legend><label>사이트 이름<input value={values.siteName} onChange={event=>change("siteName")(event.target.value)}/></label><label>로고 이미지 URL<input value={values.logoUrl} onChange={event=>change("logoUrl")(event.target.value)} placeholder="https://..."/></label><label>전체 글꼴<select value={values.fontFamily} onChange={event=>change("fontFamily")(event.target.value)}>{fontChoices.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select><small>사이트 전체에 적용할 글꼴을 선택하세요.</small></label><label>강조 색상<div className="site-color-control"><input type="color" value={/^#[0-9a-f]{6}$/i.test(values.accentColor)?values.accentColor:"#ff4f6d"} onChange={event=>change("accentColor")(event.target.value)}/><input value={values.accentColor} onChange={event=>change("accentColor")(event.target.value)} placeholder="#ff4f6d"/></div></label></fieldset>
     <fieldset><legend>히어로 배너</legend><label>작은 문구<input value={values.heroEyebrow} onChange={event=>change("heroEyebrow")(event.target.value)}/></label><label>메인 제목<textarea rows={3} value={values.heroTitle} onChange={event=>change("heroTitle")(event.target.value)}/></label><label>설명<textarea rows={3} value={values.heroDescription} onChange={event=>change("heroDescription")(event.target.value)}/></label><label className="wide">배너 이미지 URL<textarea rows={6} value={values.heroImages} onChange={event=>change("heroImages")(event.target.value)} placeholder="이미지 URL을 한 줄에 하나씩 입력"/><small>한 줄에 하나씩 입력합니다. 이미지가 여러 장이면 홈페이지에서 슬라이드됩니다.</small></label>{previewImage&&<div className="site-hero-preview" style={{backgroundImage:`linear-gradient(90deg,rgba(20,13,16,.75),rgba(20,13,16,.2)),url(${previewImage})`}}><small>{values.heroEyebrow}</small><b>{values.heroTitle}</b><span>{values.heroDescription}</span></div>}</fieldset>
     <fieldset><legend>콘텐츠 이미지와 문구</legend><label className="wide">캐릭터 이미지 목록<textarea rows={6} value={values.characterImages} onChange={event=>change("characterImages")(event.target.value)} placeholder="이름 | 이미지 URL | 출처 URL"/><small>이름 | 이미지 URL | 출처 URL 형식으로 한 줄에 한 명씩 입력하세요.</small></label><label className="wide">커뮤니티 문구<input value={values.communityMessage} onChange={event=>change("communityMessage")(event.target.value)}/></label></fieldset>
     <footer><button type="button" className="secondary" disabled={saving} onClick={resetToDefaults}>기본값으로 초기화</button><button type="submit" disabled={saving}>{saving?"저장 중…":"사이트 디자인 저장"}</button></footer>
@@ -592,11 +606,12 @@ function SiteSettingsForm() {
           fullWidth
           helperText="외부 이미지 또는 Google Drive 공유 링크를 권장합니다."
         />
-        <TextInput
+        <SelectInput
           source="fontFamily"
           label="전체 글꼴"
+          choices={SITE_FONT_CHOICES}
           fullWidth
-          helperText={'예: "Pretendard", "Noto Sans KR", sans-serif'}
+          helperText="사이트 전체에 적용할 글꼴을 선택하세요."
         />
         <TextInput source="accentColor" label="강조 색상" />
         <TextInput source="heroEyebrow" label="히어로 작은 문구" fullWidth />
