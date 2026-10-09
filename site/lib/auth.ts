@@ -39,6 +39,37 @@ function changedAtMillis(value: unknown) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function isPermissionFailure(error: unknown) {
+  const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+  const message = error instanceof Error ? error.message : "";
+  return code.includes("permission-denied") || message.includes("permission-denied") || message.includes("Missing or insufficient permissions");
+}
+
+async function claimBasicProfile(firestore: Firestore, user: User, requestedNickname: string) {
+  const nickname = normalizeNickname(requestedNickname);
+  if (nickname.length < 2 || nickname.length > 20) throw new Error("닉네임은 2~20자로 입력해 주세요.");
+  if (!/^[\p{L}\p{N} _.-]+$/u.test(nickname)) throw new Error("닉네임에는 한글, 영문, 숫자와 일부 기호만 사용할 수 있습니다.");
+  const key = nicknameKey(nickname);
+  const userRef = doc(firestore, "users", user.uid);
+  const claimRef = doc(firestore, "nicknameClaims", key);
+  await runTransaction(firestore, async transaction => {
+    const [profileSnapshot, claimSnapshot] = await Promise.all([transaction.get(userRef), transaction.get(claimRef)]);
+    if (claimSnapshot.exists() && claimSnapshot.data().uid !== user.uid) throw new Error("이미 사용 중인 닉네임입니다.");
+    const profile = profileSnapshot.data() || {};
+    const currentKey = String(profile.nicknameKey || "");
+    if (currentKey && currentKey !== key) transaction.delete(doc(firestore, "nicknameClaims", currentKey));
+    transaction.set(claimRef, { uid: user.uid, nickname, key, updatedAt: serverTimestamp() });
+    transaction.set(userRef, {
+      email: user.email || "",
+      nickname,
+      nicknameKey: key,
+      nicknameChangedAt: serverTimestamp(),
+      referralCode: String(profile.referralCode || user.uid.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12).toUpperCase()),
+      ...(!profileSnapshot.exists() ? { joinedAt: serverTimestamp() } : {}),
+    }, { merge: true });
+  });
+}
+
 export async function claimNickname(firestore: Firestore, user: User, requestedNickname: string, referralCodeValue = "") {
   const nickname = normalizeNickname(requestedNickname);
   if (nickname.length < 2 || nickname.length > 20) throw new Error("닉네임은 2~20자로 입력해 주세요.");
@@ -117,7 +148,14 @@ export async function claimNickname(firestore: Firestore, user: User, requestedN
 export async function registerWithEmail(auth: Auth, firestore: Firestore, email: string, password: string, nickname: string, referralCode = ""): Promise<User> {
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   try {
-    await claimNickname(firestore, credential.user, nickname, referralCode);
+    try {
+      await claimNickname(firestore, credential.user, nickname, referralCode);
+    } catch (error) {
+      // Member creation must not be blocked just because optional reward/referral
+      // writes are not yet available in the deployed Firestore rules.
+      if (!isPermissionFailure(error)) throw error;
+      await claimBasicProfile(firestore, credential.user, nickname);
+    }
   } catch (error) {
     await credential.user.delete().catch(() => undefined);
     await signOut(auth).catch(() => undefined);
@@ -134,13 +172,32 @@ export async function loginWithEmail(auth: Auth, email: string, password: string
     await signOut(auth);
     throw new Error("EMAIL_NOT_VERIFIED");
   }
-  if (firestore) await ensureMemberProfile(firestore, credential.user);
+  if (firestore) {
+    try {
+      await ensureMemberProfile(firestore, credential.user);
+      const profile = await getDoc(doc(firestore, "users", credential.user.uid));
+      const nickname = String(profile.data()?.nickname || "");
+      if (nickname) await claimNickname(firestore, credential.user, nickname).catch(() => undefined);
+    } catch {
+      // Authentication succeeded. Profile backfill is retried later and must
+      // not turn a successful login into a visible login error.
+    }
+  }
   return credential.user;
 }
 
 export async function loginWithGoogle(auth: Auth, firestore?: Firestore): Promise<User> {
   const credential = await signInWithPopup(auth, googleProvider);
-  if (firestore) await ensureMemberProfile(firestore, credential.user);
+  if (firestore) {
+    try {
+      await ensureMemberProfile(firestore, credential.user);
+      const profile = await getDoc(doc(firestore, "users", credential.user.uid));
+      const nickname = String(profile.data()?.nickname || "");
+      if (nickname) await claimNickname(firestore, credential.user, nickname).catch(() => undefined);
+    } catch {
+      // Keep the Google session even when Firestore profile backfill is unavailable.
+    }
+  }
   return credential.user;
 }
 

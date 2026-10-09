@@ -77,6 +77,48 @@ export const syncAuthUsers = onCall({ timeoutSeconds: 120, memory: "256MiB" }, a
   return { scanned, created };
 });
 
+export const manageMemberAccount = onCall(async request => {
+  if (!await canManageUsers(request)) throw new HttpsError("permission-denied", "회원 계정을 관리할 권한이 없습니다.");
+  const uid = String(request.data?.uid || "").trim();
+  const action = String(request.data?.action || "");
+  if (!uid || !["disable", "enable", "delete"].includes(action)) throw new HttpsError("invalid-argument", "회원과 처리 작업을 확인해 주세요.");
+  if (uid === request.auth.uid) throw new HttpsError("failed-precondition", "현재 로그인한 자신의 계정은 이 화면에서 처리할 수 없습니다.");
+
+  const authentication = getAuth();
+  let target;
+  try {
+    target = await authentication.getUser(uid);
+  } catch {
+    throw new HttpsError("not-found", "Firebase Authentication에서 회원을 찾을 수 없습니다.");
+  }
+  const targetRole = String(target.customClaims?.role || "member");
+  if (targetRole === "owner") throw new HttpsError("failed-precondition", "총관리자 계정은 비활성화하거나 삭제할 수 없습니다.");
+  if (targetRole === "deputy" && request.auth.token.role !== "owner") throw new HttpsError("permission-denied", "부총관리자 계정은 총관리자만 처리할 수 있습니다.");
+
+  const firestore = getFirestore();
+  const userRef = firestore.doc(`users/${uid}`);
+  if (action === "disable" || action === "enable") {
+    const disabled = action === "disable";
+    await authentication.updateUser(uid, { disabled });
+    await userRef.set({ disabled, accountStatusUpdatedAt: new Date().toISOString(), accountStatusUpdatedBy: request.auth.uid }, { merge: true });
+    await authentication.revokeRefreshTokens(uid);
+    return { uid, disabled };
+  }
+
+  const profile = (await userRef.get()).data() || {};
+  const email = String(target.email || profile.email || "").trim().toLowerCase();
+  await authentication.deleteUser(uid);
+  const batch = firestore.batch();
+  batch.delete(userRef);
+  if (profile.nicknameKey) batch.delete(firestore.doc(`nicknameClaims/${profile.nicknameKey}`));
+  if (profile.referralCode) batch.delete(firestore.doc(`referralCodes/${profile.referralCode}`));
+  batch.delete(firestore.doc(`referrals/${uid}`));
+  batch.delete(firestore.doc(`adminDirectory/${uid}`));
+  if (email) batch.delete(firestore.doc(`adminDirectory/${email}`));
+  await batch.commit();
+  return { uid, deleted: true };
+});
+
 export const setImageHostingKey = onCall(async request => {
   if (!canManageDesign(request)) throw new HttpsError("permission-denied", "이미지 호스팅 설정 권한이 없습니다.");
   const apiKey = String(request.data?.apiKey || "").trim();
