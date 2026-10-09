@@ -31,8 +31,17 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: site/package-lock.json
+      - name: Validate Firebase configuration
+        run: |
+          test -n "$NEXT_PUBLIC_FIREBASE_API_KEY" || (echo "Missing GitHub Actions secret: FIREBASE_API_KEY" && exit 1)
+          test -n "$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN" || (echo "Missing GitHub Actions secret: FIREBASE_AUTH_DOMAIN" && exit 1)
+          test -n "$NEXT_PUBLIC_FIREBASE_PROJECT_ID" || (echo "Missing GitHub Actions secret: FIREBASE_PROJECT_ID" && exit 1)
+          test -n "$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET" || (echo "Missing GitHub Actions secret: FIREBASE_STORAGE_BUCKET" && exit 1)
+          test -n "$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID" || (echo "Missing GitHub Actions secret: FIREBASE_MESSAGING_SENDER_ID" && exit 1)
+          test -n "$NEXT_PUBLIC_FIREBASE_APP_ID" || (echo "Missing GitHub Actions secret: FIREBASE_APP_ID" && exit 1)
       - run: npm ci
       - run: npm run build
+      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/dist/client
