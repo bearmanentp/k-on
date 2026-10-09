@@ -17,7 +17,7 @@ function requireDb(){if(!db)throw new Error("Firebase가 연결되지 않았습�
 async function firebaseRequest<T>(request:Promise<T>,label:string,timeout=12_000){let timer:ReturnType<typeof setTimeout>|undefined;try{return await Promise.race([request,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error(`${label} 시간이 초과됐습니다. Firebase 연결 상태를 확인해 주세요.`)),timeout);})]);}finally{if(timer)clearTimeout(timer);}}
 let memberSyncPromise:Promise<void>|null=null;
 let membersSyncedAt=0;
-async function syncMembersFromAuth(){
+export async function syncMembersFromAuth(){
   if(!functions)throw new Error("Firebase Functions가 연결되지 않았습니다.");
   if(Date.now()-membersSyncedAt<60_000)return;
   if(!memberSyncPromise)memberSyncPromise=firebaseRequest(httpsCallable(functions,"syncAuthUsers")({}),"기존 회원 동기화",120_000)
@@ -151,7 +151,6 @@ async function filterShopScopedRows(resource:string,rows:RaRecord[]){
 
 export const firebaseDataProvider:DataProvider = {
   async getList(resource,params){
-    if(resource==="users")await syncMembersFromAuth();
     const source=collection(requireDb(),resource),filters=params.filter||{},hasClientFilter=Object.values(filters).some(Boolean);
     const pagination=params.pagination||{page:1,perPage:25},start=(pagination.page-1)*pagination.perPage;
     // 예전 회원 문서에는 정렬 필드가 없을 수 있어 users는 전체를 읽고 클라이언트에서 정렬합니다.

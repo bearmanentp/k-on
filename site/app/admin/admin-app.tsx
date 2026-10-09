@@ -51,6 +51,7 @@ import { useFormContext } from "react-hook-form";
 import {
   firebaseAuthProvider,
   firebaseDataProvider,
+  syncMembersFromAuth,
 } from "./firebase-provider";
 import { RichTextInput } from "./rich-text-input";
 import { AdminDashboard } from "./dashboard";
@@ -415,6 +416,12 @@ function AdminList() {
   );
 }
 function MemberList(){
+  const refresh=useRefresh();
+  useEffect(()=>{
+    let active=true;
+    syncMembersFromAuth().then(()=>{if(active)refresh();}).catch(error=>console.warn("기존 회원 자동 동기화를 건너뜁니다.",error));
+    return()=>{active=false;};
+  },[refresh]);
   return <List filters={searchFilters} sort={{field:"joinedAt",order:"DESC"}}><Datagrid><TextField source="id" label="UID"/><EmailField source="email" label="이메일"/><TextField source="nickname" label="닉네임" emptyText="미등록"/><NumberField source="memberNumber" label="가입 순번"/><NumberField source="points" label="포인트" emptyText="0"/><DateField source="joinedAt" label="가입일" showTime/><DateField source="nicknameChangedAt" label="프로필 변경" showTime/></Datagrid></List>;
 }
 function PointHistoryList(){
