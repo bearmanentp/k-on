@@ -43,9 +43,10 @@ export async function loginWithGoogle(auth: Auth): Promise<User> {
 
 export function authErrorMessage(error: unknown) {
   const code = error instanceof Error ? error.message : "";
-  if (code.includes("functions/already-exists")) return "이미 사용 중인 닉네임입니다.";
+  if (code.includes("functions/already-exists")) return code.replace(/^.*?Error:\s*/, "");
   if (code.includes("functions/failed-precondition")) return code.replace(/^.*?Error:\s*/, "");
-  if (code.includes("functions/invalid-argument")) return code.replace(/^.*?Error:\s*/, "닉네임 형식을 확인해 주세요.");
+  if (code.includes("functions/invalid-argument")) return code.replace(/^.*?Error:\s*/, "");
+  if (code.includes("functions/resource-exhausted")) return code.replace(/^.*?Error:\s*/, "");
   if (code === "EMAIL_NOT_VERIFIED") return "이메일 인증을 완료한 뒤 로그인해 주세요. 가입할 때 받은 인증 메일을 확인하세요.";
   if (code.includes("auth/email-already-in-use")) return "이미 가입한 이메일입니다. 로그인해 주세요.";
   if (code.includes("auth/invalid-credential")) return "이메일 또는 비밀번호를 확인해 주세요.";

@@ -23,16 +23,19 @@ import {
   required,
 } from "react-admin";
 import {
+  Bell,
   CalendarDays,
+  CircleUserRound,
   ClipboardList,
   HelpCircle,
   ListFilter,
+  Mail,
   Megaphone,
   Newspaper,
   ShieldCheck,
   Ticket,
 } from "lucide-react";
-import { HashRouter } from "react-router-dom";
+import { HashRouter, Navigate } from "react-router-dom";
 import {
   firebaseAuthProvider,
   firebaseDataProvider,
@@ -170,17 +173,24 @@ function EventList() {
         <TextField source="title" label="행사명" />
         <DateField source="date" label="일시" showTime />
         <TextField source="place" label="장소" />
+        <TextField source="bookingType" label="예매 방식" />
         <NumberField source="capacity" label="정원" />
         <TextField source="status" label="상태" />
         <EditButton />
+        <DeleteButton />
       </Datagrid>
     </List>
   );
 }
-function EventEdit() {
+function parseEventQuestions(value:string){
+  return String(value||"").split("\n").map(line=>line.trim()).filter(Boolean).map((line,index)=>{const [label,type="text",requiredValue="optional",options=""]=line.split("|").map(part=>part.trim());return{id:`question-${index+1}`,label,type,required:requiredValue==="required",options:options.split(",").map(option=>option.trim()).filter(Boolean)};});
+}
+function formatEventQuestions(value:unknown){
+  return Array.isArray(value)?value.map((field:{label?:string;type?:string;required?:boolean;options?:string[]})=>[field.label||"",field.type||"text",field.required?"required":"optional",Array.isArray(field.options)?field.options.join(","):""].join(" | ").replace(/ \| $/,"")).join("\n"):String(value||"");
+}
+function EventForm() {
   return (
-    <Edit>
-      <SimpleForm>
+      <SimpleForm defaultValues={{status:"open",bookingType:"general",capacity:20,price:0,seatRows:0,seatsPerRow:0,formSchema:[{id:"question-1",label:"닉네임",type:"text",required:true,options:[]}]}}>
         <TextInput
           source="title"
           label="행사명"
@@ -189,8 +199,17 @@ function EventEdit() {
         />
         <DateTimeInput source="date" label="일시" validate={required()} />
         <TextInput source="place" label="장소" validate={required()} />
+        <DateTimeInput source="bookingOpenAt" label="예매 시작" helperText="비워 두면 등록 즉시 예매를 받습니다." />
+        <DateTimeInput source="bookingCloseAt" label="예매 마감" helperText="비워 두면 행사 상태를 마감으로 바꿀 때까지 열립니다." />
+        <SelectInput source="bookingType" label="예매 방식" choices={[{id:"general",name:"일반 신청"},{id:"assigned_seat",name:"지정 좌석 예매"}]} />
         <NumberInput source="capacity" label="정원" min={1} />
+        <NumberInput source="price" label="티켓 가격" min={0} helperText="무료 행사는 0원으로 입력하세요." />
+        <NumberInput source="seatRows" label="좌석 행 수" min={0} helperText="지정 좌석 예매일 때만 사용합니다. A행부터 자동 생성됩니다." />
+        <NumberInput source="seatsPerRow" label="행당 좌석 수" min={0} helperText="예: 8행 × 12석" />
+        <TextInput source="blockedSeats" label="사용하지 않는 좌석" fullWidth helperText="A1, A2처럼 쉼표로 구분하세요." format={(value:unknown)=>Array.isArray(value)?value.join(", "):String(value||"")} parse={(value:string)=>value.split(",").map(item=>item.trim().toUpperCase()).filter(Boolean)} />
         <TextInput source="summary" label="소개" multiline rows={4} fullWidth />
+        <TextInput source="imageUrl" label="행사 이미지 URL" fullWidth />
+        <TextInput source="formSchema" label="신청 질문" multiline rows={8} fullWidth format={formatEventQuestions} parse={parseEventQuestions} helperText="질문 | 형태 | required/optional | 선택지 형식으로 한 줄씩 입력하세요." />
         <SelectInput
           source="status"
           label="상태"
@@ -200,8 +219,17 @@ function EventEdit() {
           ]}
         />
       </SimpleForm>
+  );
+}
+function EventEdit() {
+  return (
+    <Edit>
+      <EventForm />
     </Edit>
   );
+}
+function EventCreate() {
+  return <Create><EventForm /></Create>;
 }
 function InquiryList() {
   return (
@@ -221,6 +249,7 @@ function InquiryEdit() {
   return (
     <Edit>
       <SimpleForm>
+        <TextInput source="userId" label="회원 UID" disabled fullWidth />
         <TextInput source="userEmail" label="회원" disabled fullWidth />
         <TextInput source="title" label="제목" disabled fullWidth />
         <TextInput
@@ -299,9 +328,11 @@ function ReservationList() {
       <Datagrid rowClick="edit">
         <EmailField source="userEmail" label="회원" />
         <TextField source="eventTitle" label="행사" />
+        <TextField source="seatLabel" label="좌석" />
         <TextField source="status" label="상태" />
         <DateField source="createdAt" label="신청일" />
         <EditButton />
+        <DeleteButton />
       </Datagrid>
     </List>
   );
@@ -310,8 +341,11 @@ function ReservationEdit() {
   return (
     <Edit>
       <SimpleForm>
+        <TextInput source="userId" label="회원 UID" disabled fullWidth />
         <TextInput source="userEmail" label="회원" disabled fullWidth />
         <TextInput source="eventTitle" label="행사" disabled fullWidth />
+        <TextInput source="seatLabel" label="배정 좌석" disabled />
+        <TextInput source="answers" label="신청 답변" disabled multiline rows={6} fullWidth format={(value:unknown)=>typeof value==="object"&&value?Object.entries(value as Record<string,unknown>).map(([key,answer])=>`${key}: ${String(answer)}`).join("\n"):String(value||"")} />
         <SelectInput
           source="status"
           label="진행 상태"
@@ -320,12 +354,29 @@ function ReservationEdit() {
             { id: "reviewing", name: "검토 중" },
             { id: "confirmed", name: "확정" },
             { id: "completed", name: "안내 완료" },
+            { id: "canceled", name: "취소" },
           ]}
         />
       </SimpleForm>
     </Edit>
   );
 }
+function AccountMessageList(){
+  return <List filters={searchFilters} sort={{field:"createdAt",order:"DESC"}}><Datagrid rowClick="edit"><EmailField source="userEmail" label="회원"/><TextField source="title" label="제목"/><BooleanField source="read" label="읽음"/><DateField source="createdAt" label="발송일" showTime/><EditButton/><DeleteButton/></Datagrid></List>;
+}
+function AccountMessageForm(){
+  return <SimpleForm defaultValues={{read:false,url:"/mypage"}}><TextInput source="userId" label="회원 UID" validate={required()} fullWidth helperText="예약 상세 화면의 사용자 UID를 입력하세요."/><TextInput source="userEmail" label="회원 이메일" fullWidth/><TextInput source="title" label="제목" validate={required()} fullWidth/><TextInput source="body" label="내용" validate={required()} multiline rows={6} fullWidth/><TextInput source="url" label="연결 주소" fullWidth/><BooleanInput source="read" label="읽음 처리"/></SimpleForm>;
+}
+function AccountMessageCreate(){return <Create><AccountMessageForm/></Create>}
+function AccountMessageEdit(){return <Edit><AccountMessageForm/></Edit>}
+function AdminNoticeList(){
+  return <List filters={searchFilters} sort={{field:"createdAt",order:"DESC"}}><Datagrid rowClick="edit"><TextField source="audiences" label="대상"/><TextField source="title" label="제목"/><DateField source="createdAt" label="작성일" showTime/><EditButton/><DeleteButton/></Datagrid></List>;
+}
+function AdminNoticeForm(){
+  return <SimpleForm><TextInput source="audiences" label="대상 권한" validate={required()} fullWidth helperText="all, design, events, notices, applications, users 중 쉼표로 구분" format={(value:unknown)=>Array.isArray(value)?value.join(", "):String(value||"")} parse={(value:string)=>value.split(",").map(item=>item.trim()).filter(Boolean)}/><TextInput source="title" label="제목" validate={required()} fullWidth/><TextInput source="body" label="내용" validate={required()} multiline rows={7} fullWidth/></SimpleForm>;
+}
+function AdminNoticeCreate(){return <Create><AdminNoticeForm/></Create>}
+function AdminNoticeEdit(){return <Edit><AdminNoticeForm/></Edit>}
 function AdminList() {
   return (
     <List sort={{ field: "updatedAt", order: "DESC" }}>
@@ -337,6 +388,12 @@ function AdminList() {
       </Datagrid>
     </List>
   );
+}
+function MemberList(){
+  return <List filters={searchFilters} sort={{field:"nicknameChangedAt",order:"DESC"}}><Datagrid><EmailField source="email" label="이메일"/><TextField source="nickname" label="닉네임"/><NumberField source="points" label="포인트"/><DateField source="nicknameChangedAt" label="프로필 변경" showTime/></Datagrid></List>;
+}
+function PointHistoryList(){
+  return <List filters={searchFilters} sort={{field:"createdAt",order:"DESC"}}><Datagrid><EmailField source="userEmail" label="회원"/><NumberField source="delta" label="변동"/><NumberField source="balance" label="잔액"/><TextField source="reason" label="사유"/><DateField source="createdAt" label="처리일" showTime/></Datagrid></List>;
 }
 function AdList() {
   return (
@@ -464,11 +521,7 @@ function ProductCreate() {
   );
 }
 function SiteSettingsList() {
-  return (
-    <Edit id="main" title="사이트 디자인" redirect={false}>
-      <SiteSettingsForm />
-    </Edit>
-  );
+  return <Navigate to="/siteSettings/main" replace />;
 }
 function SiteSettingsForm() {
   return (
@@ -559,7 +612,7 @@ function SiteSettingsForm() {
 }
 function SiteSettingsEdit() {
   return (
-    <Edit>
+    <Edit title="사이트 디자인" redirect={false}>
       <SiteSettingsForm />
     </Edit>
   );
@@ -695,6 +748,7 @@ export default function AdminApp() {
           icon={CalendarDays}
           list={EventList}
           edit={EventEdit}
+          create={EventCreate}
         />
         <Resource
           name="inquiries"
@@ -744,6 +798,10 @@ export default function AdminApp() {
           list={ReservationList}
           edit={ReservationEdit}
         />
+        <Resource name="accountMessages" options={{label:"회원 쪽지"}} icon={Mail} list={AccountMessageList} edit={AccountMessageEdit} create={AccountMessageCreate}/>
+        <Resource name="adminNotices" options={{label:"관리자 공지"}} icon={Bell} list={AdminNoticeList} edit={AdminNoticeEdit} create={AdminNoticeCreate}/>
+        <Resource name="users" options={{label:"회원"}} icon={CircleUserRound} list={MemberList}/>
+        <Resource name="pointHistory" options={{label:"포인트 내역"}} icon={Ticket} list={PointHistoryList}/>
         <Resource
           name="ads"
           options={{ label: "수동 광고" }}

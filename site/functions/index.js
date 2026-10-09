@@ -12,6 +12,7 @@ const labels = {
   reviewing: "담당자가 예약을 확인하고 있습니다.",
   confirmed: "예약이 확정되었습니다.",
   completed: "행사 안내가 완료되었습니다.",
+  canceled: "예약이 취소되었습니다.",
 };
 const allowedPermissions = ["design", "events", "notices", "applications", "users", "points"];
 const storageWarningBytes = Number(process.env.STORAGE_WARNING_BYTES || 4 * 1024 ** 3);
@@ -160,11 +161,73 @@ export const manageUserPoints = onCall(async request => {
   return { uid: target.uid, email, delta, balance };
 });
 
+export const reserveEvent = onCall(async request => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "예약하려면 로그인이 필요합니다.");
+  const eventId = String(request.data?.eventId || "").trim();
+  const requestedSeat = String(request.data?.seatLabel || "").trim().toUpperCase();
+  const rawAnswers = request.data?.answers;
+  const answers = rawAnswers && typeof rawAnswers === "object" && !Array.isArray(rawAnswers)
+    ? Object.fromEntries(Object.entries(rawAnswers).slice(0, 40).map(([key, value]) => [String(key).slice(0, 80), String(value ?? "").slice(0, 2000)]))
+    : {};
+  if (!eventId) throw new HttpsError("invalid-argument", "행사 정보가 올바르지 않습니다.");
+
+  const firestore = getFirestore();
+  const eventRef = firestore.doc(`events/${eventId}`);
+  const reservationRef = firestore.collection("reservations").doc();
+  let confirmedSeat = "";
+  await firestore.runTransaction(async transaction => {
+    const eventSnapshot = await transaction.get(eventRef);
+    if (!eventSnapshot.exists) throw new HttpsError("not-found", "행사를 찾을 수 없습니다.");
+    const event = eventSnapshot.data() || {};
+    const now = Date.now();
+    if (event.status !== "open") throw new HttpsError("failed-precondition", "마감된 행사입니다.");
+    if (event.bookingOpenAt && now < new Date(event.bookingOpenAt).getTime()) throw new HttpsError("failed-precondition", "아직 예매가 시작되지 않았습니다.");
+    if (event.bookingCloseAt && now > new Date(event.bookingCloseAt).getTime()) throw new HttpsError("failed-precondition", "예매 기간이 종료되었습니다.");
+
+    const duplicateQuery = firestore.collection("reservations").where("eventId", "==", eventId).where("userId", "==", request.auth.uid);
+    const duplicateSnapshot = await transaction.get(duplicateQuery);
+    if (duplicateSnapshot.docs.some(snapshot => snapshot.data()?.status !== "canceled")) throw new HttpsError("already-exists", "이미 이 행사를 예약했습니다.");
+
+    let seatRef = null;
+    if (event.bookingType === "assigned_seat") {
+      const rows = Math.min(26, Math.max(0, Number(event.seatRows || 0)));
+      const columns = Math.max(0, Number(event.seatsPerRow || 0));
+      const match = requestedSeat.match(/^([A-Z])(\d+)$/);
+      const rowIndex = match ? match[1].charCodeAt(0) - 65 : -1;
+      const column = match ? Number(match[2]) : 0;
+      const blocked = Array.isArray(event.blockedSeats) ? event.blockedSeats.map(value => String(value).toUpperCase()) : [];
+      if (!match || rowIndex < 0 || rowIndex >= rows || column < 1 || column > columns || blocked.includes(requestedSeat)) {
+        throw new HttpsError("invalid-argument", "선택할 수 없는 좌석입니다.");
+      }
+      seatRef = firestore.doc(`events/${eventId}/seats/${requestedSeat}`);
+      if ((await transaction.get(seatRef)).exists) throw new HttpsError("already-exists", "방금 다른 회원이 선택한 좌석입니다. 다른 좌석을 선택해 주세요.");
+      confirmedSeat = requestedSeat;
+    } else {
+      const capacity = Math.max(1, Number(event.capacity || 1));
+      const reservationsSnapshot = await transaction.get(firestore.collection("reservations").where("eventId", "==", eventId));
+      const activeCount = reservationsSnapshot.docs.filter(snapshot => snapshot.data()?.status !== "canceled").length;
+      if (activeCount >= capacity) throw new HttpsError("resource-exhausted", "예약 정원이 마감되었습니다.");
+    }
+
+    const createdAt = new Date().toISOString();
+    const reservation = { userId: request.auth.uid, userEmail: request.auth.token.email || "", eventId, eventTitle: String(event.title || "행사"), answers, seatLabel: confirmedSeat || null, amount: Math.max(0, Number(event.price || 0)), createdAt, status: "received" };
+    transaction.set(reservationRef, reservation);
+    if (seatRef) transaction.set(seatRef, { eventId, seatLabel: confirmedSeat, reservationId: reservationRef.id, userId: request.auth.uid, createdAt });
+  });
+  return { reservationId: reservationRef.id, seatLabel: confirmedSeat || undefined };
+});
+
 export const notifyReservationProgress = onDocumentUpdated("reservations/{reservationId}", async event => {
   const before = event.data?.before.data();
   const after = event.data?.after.data();
   if (!after || before?.status === after.status || !after.userId) return;
-  await getFirestore().collection("accountMessages").add({
+  const firestore = getFirestore();
+  if (after.status === "canceled" && after.eventId && after.seatLabel) {
+    const seatRef = firestore.doc(`events/${after.eventId}/seats/${String(after.seatLabel).toUpperCase()}`);
+    const seat = await seatRef.get();
+    if (seat.exists && seat.data()?.reservationId === event.params.reservationId) await seatRef.delete();
+  }
+  await firestore.collection("accountMessages").add({
     userId: after.userId,
     userEmail: after.userEmail || "",
     title: after.eventTitle || "K-ON! 행사 예약",
@@ -175,6 +238,14 @@ export const notifyReservationProgress = onDocumentUpdated("reservations/{reserv
     read: false,
     url: "/#events",
   });
+});
+
+export const releaseReservedSeat = onDocumentDeleted("reservations/{reservationId}", async event => {
+  const reservation = event.data?.data();
+  if (!reservation?.eventId || !reservation?.seatLabel) return;
+  const seatRef = getFirestore().doc(`events/${reservation.eventId}/seats/${String(reservation.seatLabel).toUpperCase()}`);
+  const seat = await seatRef.get();
+  if (seat.exists && seat.data()?.reservationId === event.params.reservationId) await seatRef.delete();
 });
 
 export const notifyInquiryAnswer = onDocumentUpdated("inquiries/{inquiryId}", async event => {

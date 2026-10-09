@@ -105,6 +105,10 @@ type EventItem = {
   capacity: number;
   status: "open" | "closed";
   formSchema: FormField[];
+  bookingType?: "general" | "assigned_seat";
+  price?: number;
+  seatRows?: number;
+  seatsPerRow?: number;
 };
 type Post = {
   id: string;
@@ -646,24 +650,19 @@ export default function Home() {
         setAuthOpen(true),
         setToast("예약하려면 로그인해 주세요.")
       );
-    if (!db || !reserveEvent) return;
+    if (!functions || !reserveEvent) return;
     const f = new FormData(e.currentTarget);
     const answers = Object.fromEntries(
-      reserveEvent.formSchema.map((q) => [q.label, String(f.get(q.id) || "")]),
+      reserveEvent.formSchema.map((q) => [q.id, String(f.get(q.id) || "")]),
     );
-    await addDoc(collection(db, "reservations"), {
-      userId: user.uid,
-      userEmail: user.email,
-      eventId: reserveEvent.id,
-      eventTitle: reserveEvent.title,
-      answers,
-      createdAt: new Date().toISOString(),
-      status: "received",
-    });
-    setReserveEvent(null);
-    setToast(
-      "예약이 접수되었습니다. 알림을 켜면 진행 상태를 받을 수 있습니다.",
-    );
+    try {
+      const call = httpsCallable(functions, "reserveEvent");
+      await call({ eventId: reserveEvent.id, answers });
+      setReserveEvent(null);
+      setToast("예약이 접수되었습니다. 알림을 켜면 진행 상태를 받을 수 있습니다.");
+    } catch (error) {
+      setToast(authErrorMessage(error));
+    }
   }
   async function createPost(
     e: FormEvent<HTMLFormElement>,
@@ -1150,9 +1149,11 @@ export default function Home() {
                 </div>
               </dl>
               <Button
-                onClick={() =>
-                  user
-                    ? setReserveEvent(item)
+                 onClick={() =>
+                   item.bookingType === "assigned_seat"
+                     ? (window.location.href = "/events")
+                     : user
+                     ? setReserveEvent(item)
                     : (setAuthOpen(true),
                       setToast("예약하려면 로그인해 주세요."))
                 }
