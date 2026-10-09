@@ -190,13 +190,17 @@ export const reserveEvent = onCall(async request => {
 
     let seatRef = null;
     if (event.bookingType === "assigned_seat") {
+      const layoutCells = Array.isArray(event.seatLayout?.cells) ? event.seatLayout.cells : [];
+      const configuredSeat = layoutCells.find(cell => String(cell?.label || "").toUpperCase() === requestedSeat);
       const rows = Math.min(26, Math.max(0, Number(event.seatRows || 0)));
       const columns = Math.max(0, Number(event.seatsPerRow || 0));
       const match = requestedSeat.match(/^([A-Z])(\d+)$/);
       const rowIndex = match ? match[1].charCodeAt(0) - 65 : -1;
       const column = match ? Number(match[2]) : 0;
       const blocked = Array.isArray(event.blockedSeats) ? event.blockedSeats.map(value => String(value).toUpperCase()) : [];
-      if (!match || rowIndex < 0 || rowIndex >= rows || column < 1 || column > columns || blocked.includes(requestedSeat)) {
+      const validCustomSeat = layoutCells.length > 0 && configuredSeat?.kind === "seat";
+      const validLegacySeat = layoutCells.length === 0 && match && rowIndex >= 0 && rowIndex < rows && column >= 1 && column <= columns && !blocked.includes(requestedSeat);
+      if (!validCustomSeat && !validLegacySeat) {
         throw new HttpsError("invalid-argument", "선택할 수 없는 좌석입니다.");
       }
       seatRef = firestore.doc(`events/${eventId}/seats/${requestedSeat}`);

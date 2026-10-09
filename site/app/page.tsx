@@ -67,6 +67,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SiteHub } from "@/components/site/site-hub";
 import { BOARD_DEFINITIONS } from "@/lib/board-config";
+import { AccountMenu } from "@/app/components/account-menu";
 import {
   authErrorMessage,
   loginWithEmail,
@@ -910,32 +911,7 @@ export default function Home() {
               )}
             </Button>
           )}
-          {user && (
-            <Button variant="ghost" onClick={() => setProfileOpen(true)}>
-              <CircleUserRound />
-              {nickname || "내 계정"}
-            </Button>
-          )}
-          {user && isAdmin && (
-            <Button variant="outline" asChild>
-              <Link href="/admin">
-                <Settings />
-                관리 시스템
-              </Link>
-            </Button>
-          )}
-          {user && (
-            <Button variant="outline" onClick={() => auth && signOut(auth)}>
-              <LogOut />
-              로그아웃
-            </Button>
-          )}
-          {!user && (
-            <Button variant="outline" onClick={() => setAuthOpen(true)}>
-              <CircleUserRound />
-              로그인
-            </Button>
-          )}
+          <AccountMenu onLogin={()=>setAuthOpen(true)} onSettings={()=>setProfileOpen(true)}/>
         </div>
       </header>
       {!firebaseConfigured && (

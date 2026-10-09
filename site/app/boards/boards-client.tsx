@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { generateHTML } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import TiptapLink from "@tiptap/extension-link";
 import { BOARD_BY_KEY, BOARD_DEFINITIONS, type BoardDefinition, type BoardKey } from "@/lib/board-config";
 import { authErrorMessage, loginWithEmail, loginWithGoogle, registerWithEmail } from "@/lib/auth";
 import { PublicHeader } from "@/app/components/public-header";
@@ -31,11 +32,11 @@ const DEFAULT_INQUIRY_CATEGORIES:InquiryCategory[] = [{id:"event",label:"행사"
 function readRoute():RouteState {
   if(typeof window==="undefined")return{tab:"news"};
   const [rawTab,rawItem]=window.location.hash.replace(/^#/,"").split("/");
-  const tab:BoardTab=BOARD_BY_KEY[rawTab as BoardKey]?rawTab as BoardKey:"news";
+  const tab:BoardTab=rawTab||"news";
   return {tab,itemId:rawItem&&rawItem!=="new"?decodeURIComponent(rawItem):undefined,compose:tab==="inquiries"&&rawItem==="new"};
 }
 function formatDate(value:string){return new Date(value).toLocaleDateString("ko-KR");}
-function postBody(post:Post){if(!post.bodyRich||typeof post.bodyRich!=="object")return <p>{post.body}</p>;try{return <div dangerouslySetInnerHTML={{__html:generateHTML(post.bodyRich as Parameters<typeof generateHTML>[0],[StarterKit])}}/>;}catch{return <p>{post.body}</p>;}}
+function postBody(post:Post){if(!post.bodyRich||typeof post.bodyRich!=="object")return <p>{post.body}</p>;try{return <div dangerouslySetInnerHTML={{__html:generateHTML(post.bodyRich as Parameters<typeof generateHTML>[0],[StarterKit,TiptapLink])}}/>;}catch{return <p>{post.body}</p>;}}
 function directFileUrl(value:string){const match=value.match(/drive\.google\.com\/file\/d\/([^/]+)/)||value.match(/[?&]id=([^&]+)/);return match?`https://drive.google.com/uc?export=download&id=${match[1]}`:value;}
 function PollBox({post}:{post:Post}){const options=(post.pollOptions||"").split(",").map(v=>v.trim()).filter(Boolean);if(!post.pollQuestion||options.length<2)return null;return <div className="poll-box"><b>{post.pollQuestion}</b>{options.map(option=><button type="button" key={option} onClick={async()=>{if(!auth?.currentUser||!db)return window.alert("투표하려면 로그인해 주세요.");await addDoc(collection(db,"pollVotes"),{postId:post.id,option,userId:auth.currentUser.uid,createdAt:new Date().toISOString()});window.alert("투표가 저장되었습니다.");}}>{option}</button>)}</div>}
 
@@ -55,7 +56,7 @@ export default function BoardsPage(){
     const un=onSnapshot(query(collection(db,"news"),orderBy("createdAt","desc")),snap=>setNews(snap.docs.map(item=>({id:item.id,...item.data()} as Post))));
     const uo=onSnapshot(query(collection(db,"notices"),orderBy("createdAt","desc")),snap=>setNotices(snap.docs.map(item=>({id:item.id,...item.data()} as Post))));
     const uc=onSnapshot(collection(db,"inquiryCategories"),snap=>{const list=snap.docs.map(item=>({id:item.id,...item.data()} as InquiryCategory)).filter(item=>item.active!==false).sort((a,b)=>(a.order??0)-(b.order??0));setInquiryCategories(list.length?list:DEFAULT_INQUIRY_CATEGORIES);});
-    const ub=onSnapshot(collection(db,"boardDefinitions"),snap=>{const list=snap.docs.map(item=>{const data=item.data() as Omit<BoardDefinition,"icon">;return {...data,key:data.key||item.id,icon:BOARD_BY_KEY[data.key||item.id]?.icon||Newspaper} as BoardDefinition;}).filter(item=>item.active!==false).sort((a,b)=>(a.order??0)-(b.order??0));if(list.length)setBoardDefinitions([...BOARD_DEFINITIONS,...list.filter(item=>!BOARD_DEFINITIONS.some(base=>base.key===item.key))]);});
+    const ub=onSnapshot(collection(db,"boardDefinitions"),snap=>{const list=snap.docs.map(item=>{const data=item.data() as Omit<BoardDefinition,"icon">;return {...data,collection:"boardPosts",key:data.key||item.id,icon:BOARD_BY_KEY[data.key||item.id]?.icon||Newspaper} as BoardDefinition;}).filter(item=>item.active!==false).sort((a,b)=>(a.order??0)-(b.order??0));setBoardDefinitions([...BOARD_DEFINITIONS,...list.filter(item=>!BOARD_DEFINITIONS.some(base=>base.key===item.key))]);});
     return()=>{ua();us();un();uo();uc();ub();};
   },[]);
   useEffect(()=>{
@@ -106,9 +107,10 @@ export default function BoardsPage(){
     setToast("답변을 등록했습니다.");
   }
 
-  const CurrentIcon=boardByKey[route.tab].icon;
+  const currentBoard=boardByKey[route.tab]||BOARD_BY_KEY.news;
+  const CurrentIcon=currentBoard.icon;
   return <main className="boards-page" style={{"--accent":accent} as CSSProperties}>
-    <PublicHeader siteName={siteName} logoUrl={logoUrl} active="boards" boards={boardDefinitions} actions={user?<Button variant="outline" onClick={()=>auth&&signOut(auth)}><LogOut/>로그아웃</Button>:<span className="member-state"><CircleUserRound/>비회원</span>}/>
+    <PublicHeader siteName={siteName} logoUrl={logoUrl} active="boards" boards={boardDefinitions}/>
     {!firebaseConfigured&&<div className="setup-banner">미리보기 모드 · Firebase 연결 후 로그인과 문의 기능이 활성화됩니다.</div>}
     {toast&&<button className="toast" onClick={()=>setToast("")}>{toast}</button>}
 
@@ -116,7 +118,7 @@ export default function BoardsPage(){
     <nav className="board-tabs" aria-label="게시판 종류">{boardDefinitions.map(({key,label,icon:Icon})=><a key={key} href={`#${key}`} className={route.tab===key?"active":""}><Icon/>{label}</a>)}</nav>
 
     <section className="board-page-content">
-      <div className="board-page-heading"><div><small>{route.tab.toUpperCase()}</small><h2><CurrentIcon/>{boardByKey[route.tab].label} 게시판</h2><p>{boardByKey[route.tab].description}</p></div>{route.tab==="inquiries"&&user&&!route.compose&&<a className="board-link-button" href="#inquiries/new"><PenLine/>문의 작성</a>}</div>
+      <div className="board-page-heading"><div><small>{route.tab.toUpperCase()}</small><h2><CurrentIcon/>{currentBoard.label} 게시판</h2><p>{currentBoard.description}</p></div>{route.tab==="inquiries"&&user&&!route.compose&&<a className="board-link-button" href="#inquiries/new"><PenLine/>문의 작성</a>}</div>
 
       {route.tab!=="inquiries"&&route.itemId&&<article className="board-article"><a className="back-link" href={`#${route.tab}`}><ArrowLeft/>목록으로</a>{selectedPost?<><div className="article-meta">{selectedPost.prefix&&<span>{selectedPost.prefix}</span>}<span>{selectedPost.category}</span><time>{formatDate(selectedPost.createdAt)}</time></div><h2>{selectedPost.title}</h2><div className="article-body">{postBody(selectedPost)}</div>{selectedPost.attachmentUrl&&<a className="file-attachment" href={directFileUrl(selectedPost.attachmentUrl)} target="_blank" rel="noreferrer">📎 {selectedPost.attachmentName||"첨부 파일 열기"}</a>}<PollBox post={selectedPost}/></>:<div className="board-empty">글을 찾을 수 없습니다.</div>}</article>}
 

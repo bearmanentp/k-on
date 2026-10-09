@@ -21,9 +21,11 @@ import {
   TextField,
   TextInput,
   required,
+  useGetList,
 } from "react-admin";
 import {
   Bell,
+  Armchair,
   CalendarDays,
   CircleUserRound,
   ClipboardList,
@@ -35,13 +37,14 @@ import {
   ShieldCheck,
   Ticket,
 } from "lucide-react";
-import { HashRouter, Navigate } from "react-router-dom";
+import { HashRouter } from "react-router-dom";
 import {
   firebaseAuthProvider,
   firebaseDataProvider,
 } from "./firebase-provider";
 import { RichTextInput } from "./rich-text-input";
 import { AdminDashboard } from "./dashboard";
+import { SeatLayoutInput } from "./seat-layout-input";
 
 const searchFilters = [<TextInput key="q" source="q" label="검색" alwaysOn />];
 
@@ -104,9 +107,21 @@ function PostList() {
     </List>
   );
 }
-function PostForm() {
+function BoardDefinitionSelect() {
+  const { data = [], isPending } = useGetList("boardDefinitions", {
+    pagination: { page: 1, perPage: 100 },
+    sort: { field: "order", order: "ASC" },
+  });
+  const choices = data
+    .filter((board) => board.active !== false && !["news", "notices", "inquiries"].includes(String(board.key)))
+    .map((board) => ({ id: String(board.key || board.id), name: String(board.label || board.key || board.id) }));
+  return <SelectInput source="boardKey" label="게시판" choices={choices} validate={required()} isPending={isPending} fullWidth helperText="게시판 관리에서 만든 게시판을 선택하세요." />;
+}
+
+function PostForm({ withBoard = false }: { withBoard?: boolean }) {
   return (
     <SimpleForm>
+      {withBoard && <BoardDefinitionSelect />}
       <TextInput
         source="prefix"
         label="말머리"
@@ -207,6 +222,7 @@ function EventForm() {
         <NumberInput source="seatRows" label="좌석 행 수" min={0} helperText="지정 좌석 예매일 때만 사용합니다. A행부터 자동 생성됩니다." />
         <NumberInput source="seatsPerRow" label="행당 좌석 수" min={0} helperText="예: 8행 × 12석" />
         <TextInput source="blockedSeats" label="사용하지 않는 좌석" fullWidth helperText="A1, A2처럼 쉼표로 구분하세요." format={(value:unknown)=>Array.isArray(value)?value.join(", "):String(value||"")} parse={(value:string)=>value.split(",").map(item=>item.trim().toUpperCase()).filter(Boolean)} />
+        <SeatLayoutInput source="seatLayout" />
         <TextInput source="summary" label="소개" multiline rows={4} fullWidth />
         <TextInput source="imageUrl" label="행사 이미지 URL" fullWidth />
         <TextInput source="formSchema" label="신청 질문" multiline rows={8} fullWidth format={formatEventQuestions} parse={parseEventQuestions} helperText="질문 | 형태 | required/optional | 선택지 형식으로 한 줄씩 입력하세요." />
@@ -395,6 +411,12 @@ function MemberList(){
 function PointHistoryList(){
   return <List filters={searchFilters} sort={{field:"createdAt",order:"DESC"}}><Datagrid><EmailField source="userEmail" label="회원"/><NumberField source="delta" label="변동"/><NumberField source="balance" label="잔액"/><TextField source="reason" label="사유"/><DateField source="createdAt" label="처리일" showTime/></Datagrid></List>;
 }
+function SeatLayoutList(){
+  return <List sort={{field:"createdAt",order:"DESC"}}><Datagrid rowClick="edit"><TextField source="name" label="배치명"/><NumberField source="layout.rows" label="행"/><NumberField source="layout.columns" label="열"/><DateField source="createdAt" label="저장일" showTime/><EditButton/><DeleteButton/></Datagrid></List>;
+}
+function SeatLayoutForm(){return <SimpleForm><TextInput source="name" label="배치명" validate={required()} fullWidth/><SeatLayoutInput source="layout"/></SimpleForm>}
+function SeatLayoutCreate(){return <Create><SeatLayoutForm/></Create>}
+function SeatLayoutEdit(){return <Edit><SeatLayoutForm/></Edit>}
 function AdList() {
   return (
     <List sort={{ field: "createdAt", order: "DESC" }}>
@@ -521,7 +543,7 @@ function ProductCreate() {
   );
 }
 function SiteSettingsList() {
-  return <Navigate to="/siteSettings/main" replace />;
+  return <List pagination={false}><Datagrid rowClick="edit"><TextField source="siteName" label="사이트 이름"/><TextField source="fontFamily" label="전체 글꼴"/><TextField source="accentColor" label="강조 색상"/><DateField source="updatedAt" label="마지막 변경" showTime/><EditButton/></Datagrid></List>;
 }
 function SiteSettingsForm() {
   return (
@@ -634,7 +656,7 @@ function BoardList() {
 }
 function BoardForm() {
   return (
-    <SimpleForm>
+    <SimpleForm defaultValues={{ collection: "boardPosts", active: true, order: 10 }}>
       <TextInput
         source="key"
         label="주소 키"
@@ -644,11 +666,7 @@ function BoardForm() {
       <TextInput source="label" label="게시판 이름" validate={required()} />
       <TextInput source="menuLabel" label="메뉴 이름" validate={required()} />
       <TextInput source="description" label="설명" fullWidth />
-      <TextInput
-        source="collection"
-        label="Firestore 컬렉션"
-        validate={required()}
-      />
+      <TextInput source="collection" defaultValue="boardPosts" sx={{ display: "none" }} />
       <BooleanInput source="requiresLogin" label="로그인 필요" />
       <BooleanInput source="active" label="메뉴에 표시" defaultValue={true} />
       <NumberInput source="order" label="메뉴 순서" min={0} defaultValue={10} />
@@ -684,20 +702,7 @@ function BoardPostList() {
   );
 }
 function BoardPostForm() {
-  return (
-    <SimpleForm>
-      <TextInput
-        source="boardKey"
-        label="게시판 키"
-        validate={required()}
-        helperText="게시판 관리에서 만든 주소 키"
-      />
-      <TextInput source="category" label="분류" validate={required()} />
-      <TextInput source="title" label="제목" validate={required()} fullWidth />
-      <BooleanInput source="pinned" label="필독 고정" />
-      <RichTextInput />
-    </SimpleForm>
-  );
+  return <PostForm withBoard />;
 }
 function BoardPostEdit() {
   return (
@@ -775,7 +780,7 @@ export default function AdminApp() {
         />
         <Resource
           name="boardPosts"
-          options={{ label: "추가 게시판 글" }}
+          options={{ label: "게시판 글 관리" }}
           icon={Newspaper}
           list={BoardPostList}
           edit={BoardPostEdit}
@@ -802,6 +807,7 @@ export default function AdminApp() {
         <Resource name="adminNotices" options={{label:"관리자 공지"}} icon={Bell} list={AdminNoticeList} edit={AdminNoticeEdit} create={AdminNoticeCreate}/>
         <Resource name="users" options={{label:"회원"}} icon={CircleUserRound} list={MemberList}/>
         <Resource name="pointHistory" options={{label:"포인트 내역"}} icon={Ticket} list={PointHistoryList}/>
+        <Resource name="seatLayouts" options={{label:"좌석 배치 템플릿"}} icon={Armchair} list={SeatLayoutList} edit={SeatLayoutEdit} create={SeatLayoutCreate}/>
         <Resource
           name="ads"
           options={{ label: "수동 광고" }}

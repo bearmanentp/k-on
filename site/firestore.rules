@@ -21,6 +21,10 @@ service cloud.firestore {
         allow write: if false;
       }
     }
+    match /seatLayouts/{id} {
+      allow read: if has('events');
+      allow create, update, delete: if has('events');
+    }
     match /notices/{id} {
       allow read: if true;
       allow create, update, delete: if has('notices');

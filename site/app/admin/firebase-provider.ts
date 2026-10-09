@@ -6,18 +6,21 @@ import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebas
 import { auth, db } from "@/lib/firebase";
 
 const permissionByResource:Record<string,string> = {
-  notices:"notices", news:"notices", events:"events", inquiries:"applications", inquiryCategories:"applications",
+  notices:"notices", news:"notices", events:"events", seatLayouts:"events", inquiries:"applications", inquiryCategories:"applications",
   reservations:"applications", accountMessages:"applications", adminNotices:"users", users:"users", pointHistory:"points", orders:"applications", ads:"design", products:"design", shopSettings:"design", adminDirectory:"users", siteSettings:"design", boardDefinitions:"notices", boardPosts:"notices",
 };
 
 function requireDb(){if(!db)throw new Error("Firebase가 연결되지 않았습니다.");return db;}
 function waitForUser(){return new Promise<NonNullable<typeof auth>["currentUser"]>((resolve,reject)=>{if(!auth)return reject(new Error("Firebase가 연결되지 않았습니다."));const stop=onAuthStateChanged(auth,user=>{stop();resolve(user);},reject);});}
 function normalize(value:unknown):RaRecord {const record=value as RaRecord;return {...record,id:String(record.id)};}
+function defaultSiteSettings(){return normalize({id:"main",siteName:"K-ON! FANDOM KR",logoUrl:"",fontFamily:'"Pretendard", "Noto Sans KR", system-ui, sans-serif',accentColor:"#ff4f6d",heroEyebrow:"AFTER SCHOOL, TOGETHER",heroTitle:"좋아하는 음악으로\n다시 만나는 우리",heroDescription:"",heroImages:[],characterImages:[],communityMessage:""});}
+function preparePayload(resource:string,data:Record<string,unknown>){return resource==="boardDefinitions"?{...data,collection:"boardPosts"}:data;}
 
 export const firebaseDataProvider:DataProvider = {
   async getList(resource,params){
     const snapshot=await getDocs(collection(requireDb(),resource));
     let rows=snapshot.docs.map(item=>normalize({id:item.id,...item.data()}));
+    if(resource==="siteSettings"&&!rows.length)rows=[defaultSiteSettings()];
     const filters=params.filter||{};
     rows=rows.filter(row=>Object.entries(filters).every(([key,value])=>{if(!value)return true;const needle=String(value).toLowerCase();return key==="q"?Object.values(row).some(cell=>String(cell??"").toLowerCase().includes(needle)):String(row[key]??"").toLowerCase().includes(needle);}));
     const sort=params.sort;
@@ -27,11 +30,11 @@ export const firebaseDataProvider:DataProvider = {
     const start=(pagination.page-1)*pagination.perPage;
     return {data:rows.slice(start,start+pagination.perPage) as never,total};
   },
-  async getOne(resource,params){const snapshot=await getDoc(doc(requireDb(),resource,String(params.id)));if(!snapshot.exists()){if(resource==="siteSettings"&&String(params.id)==="main")return{data:normalize({id:"main",siteName:"K-ON! FANDOM KR",logoUrl:"",fontFamily:'"Pretendard", "Noto Sans KR", system-ui, sans-serif',accentColor:"#ff4f6d",heroEyebrow:"AFTER SCHOOL, TOGETHER",heroTitle:"좋아하는 음악으로\n다시 만나는 우리",heroDescription:"",heroImages:[],characterImages:[],communityMessage:""}) as never};throw new Error("데이터를 찾을 수 없습니다.");}return{data:normalize({id:snapshot.id,...snapshot.data()}) as never};},
+  async getOne(resource,params){const snapshot=await getDoc(doc(requireDb(),resource,String(params.id)));if(!snapshot.exists()){if(resource==="siteSettings"&&String(params.id)==="main")return{data:defaultSiteSettings() as never};throw new Error("데이터를 찾을 수 없습니다.");}return{data:normalize({id:snapshot.id,...snapshot.data()}) as never};},
   async getMany(resource,params){const rows=await Promise.all(params.ids.map(async id=>{const snapshot=await getDoc(doc(requireDb(),resource,String(id)));return snapshot.exists()?normalize({id:snapshot.id,...snapshot.data()}):null;}));return{data:rows.filter((row):row is RaRecord=>Boolean(row)) as never};},
   async getManyReference(resource,params){const snapshot=await getDocs(collection(requireDb(),resource));const rows=snapshot.docs.map(item=>normalize({id:item.id,...item.data()})).filter(row=>String(row[params.target])===String(params.id));return{data:rows as never,total:rows.length};},
-  async create(resource,params){const payload={...params.data,createdAt:params.data.createdAt||new Date().toISOString()};const created=await addDoc(collection(requireDb(),resource),payload);return{data:normalize({id:created.id,...payload}) as never};},
-  async update(resource,params){const payload:Record<string,unknown>={...params.data,updatedAt:new Date().toISOString()};delete payload.id;await setDoc(doc(requireDb(),resource,String(params.id)),payload,{merge:true});return{data:normalize({id:params.id,...params.data,...payload}) as never};},
+  async create(resource,params){const prepared=preparePayload(resource,params.data as Record<string,unknown>);const payload={...prepared,createdAt:prepared.createdAt||new Date().toISOString()};const created=await addDoc(collection(requireDb(),resource),payload);return{data:normalize({id:created.id,...payload}) as never};},
+  async update(resource,params){const prepared=preparePayload(resource,params.data as Record<string,unknown>);const payload:Record<string,unknown>={...prepared,updatedAt:new Date().toISOString()};delete payload.id;await setDoc(doc(requireDb(),resource,String(params.id)),payload,{merge:true});return{data:normalize({id:params.id,...prepared,...payload}) as never};},
   async updateMany(resource,params){const batch=writeBatch(requireDb());params.ids.forEach(id=>batch.set(doc(requireDb(),resource,String(id)),{...params.data,updatedAt:new Date().toISOString()},{merge:true}));await batch.commit();return{data:params.ids};},
   async delete(resource,params){await deleteDoc(doc(requireDb(),resource,String(params.id)));return{data:normalize(params.previousData||{id:params.id}) as never};},
   async deleteMany(resource,params){const batch=writeBatch(requireDb());params.ids.forEach(id=>batch.delete(doc(requireDb(),resource,String(id))));await batch.commit();return{data:params.ids};},

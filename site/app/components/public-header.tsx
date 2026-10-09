@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { CalendarDays, Home, Info, Music2, Newspaper, Sparkles, Users } from "lucide-react";
 import { BOARD_DEFINITIONS, type BoardDefinition } from "@/lib/board-config";
+import { AccountMenu } from "./account-menu";
 
 type ActivePage="home"|"events"|"boards"|"shop"|"mypage";
 
@@ -24,6 +25,6 @@ export function PublicHeader({siteName,logoUrl,active,boards=BOARD_DEFINITIONS,a
       <Link href="/"><Home/>홈</Link><Link href="/#about"><Info/>소개</Link><Link href="/#site-map"><Sparkles/>둘러보기</Link><Link href="/#characters"><Users/>캐릭터</Link><Link href="/events"><CalendarDays/>행사·예약</Link><Link href="/shop"><Music2/>상점</Link>
       <details className="mobile-community"><summary><Newspaper/>커뮤니티</summary><div>{boards.map(({key,menuLabel,icon:Icon})=><Link href={`/boards#${key}`} key={key}><Icon/>{menuLabel}</Link>)}</div></details>
     </div></details>
-    {actions&&<div className="header-actions">{actions}</div>}
+    <div className="header-actions">{actions===undefined?<AccountMenu/>:actions}</div>
   </header>;
 }
