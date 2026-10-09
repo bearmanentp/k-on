@@ -74,6 +74,7 @@ import {
 } from "@/lib/auth";
 import { reserveEventInFirestore } from "@/lib/reservations";
 import { readAdminAccess } from "@/lib/admin-access";
+import { DEFAULT_CHARACTER_IMAGES, DEFAULT_K_ON_LOGO } from "@/lib/site-defaults";
 
 type Permission =
   | "design"
@@ -182,12 +183,9 @@ type SiteSettings = {
   fontFamily: string;
 };
 
-const K_ON_LOGO =
-  "https://upload.wikimedia.org/wikipedia/commons/1/17/K-ON_anime_wordmark.svg";
-const TBS = "https://www.tbs.co.jp/anime/k-on/k-on_tv/chara";
 const defaults: SiteSettings = {
   siteName: "K-ON! FANDOM KR",
-  logoUrl: K_ON_LOGO,
+  logoUrl: DEFAULT_K_ON_LOGO,
   heroEyebrow: "AFTER SCHOOL, TOGETHER",
   heroTitle: "좋아하는 음악으로\n다시 만나는 우리",
   heroDescription:
@@ -195,33 +193,7 @@ const defaults: SiteSettings = {
   heroImages: ["/hero-music-room.png"],
   accentColor: "#ff4f6d",
   communityMessage: "좋아하는 마음은 시간이 지나도 계속 연주됩니다.",
-  characterImages: [
-    {
-      name: "히라사와 유이",
-      url: `${TBS}/images/chara_photo01_1.gif`,
-      source: `${TBS}/chara01.html`,
-    },
-    {
-      name: "아키야마 미오",
-      url: `${TBS}/images/chara_photo02_1.gif`,
-      source: `${TBS}/chara02.html`,
-    },
-    {
-      name: "타이나카 리츠",
-      url: `${TBS}/images/chara_photo03_1.gif`,
-      source: `${TBS}/chara03.html`,
-    },
-    {
-      name: "코토부키 츠무기",
-      url: `${TBS}/images/chara_photo04_1.gif`,
-      source: `${TBS}/chara04.html`,
-    },
-    {
-      name: "나카노 아즈사",
-      url: `${TBS}/images/chara_photo08_1.gif`,
-      source: `${TBS}/chara08.html`,
-    },
-  ],
+  characterImages: DEFAULT_CHARACTER_IMAGES,
   fontFamily: '"Pretendard", "Noto Sans KR", system-ui, sans-serif',
 };
 const statusLabel: Record<string, string> = {
@@ -322,8 +294,18 @@ export default function Home() {
     });
     const us = onSnapshot(
       doc(db, "siteSettings", "main"),
-      (s) =>
-        s.exists() && setSite({ ...defaults, ...s.data() } as SiteSettings),
+      (s) => {
+        if (!s.exists()) return;
+        const saved = s.data();
+        setSite({
+          ...defaults,
+          ...saved,
+          logoUrl: String(saved.logoUrl || DEFAULT_K_ON_LOGO),
+          characterImages: Array.isArray(saved.characterImages) && saved.characterImages.length
+            ? saved.characterImages
+            : DEFAULT_CHARACTER_IMAGES,
+        } as SiteSettings);
+      },
     );
     const ue = onSnapshot(
       query(collection(db, "events"), orderBy("date", "asc")),
@@ -564,14 +546,17 @@ export default function Home() {
       .split("\n")
       .map(directImageUrl)
       .filter(Boolean);
-    const logo = directImageUrl(String(f.get("logoUrl")));
-    const characterImages = String(f.get("characterImages"))
+    const logo = directImageUrl(String(f.get("logoUrl"))) || DEFAULT_K_ON_LOGO;
+    const parsedCharacterImages = String(f.get("characterImages"))
       .split("\n")
       .map((line) => {
         const [name, url, source] = line.split("|").map((v) => v.trim());
         return { name, url: directImageUrl(url || ""), source };
       })
       .filter((x) => x.name && x.url);
+    const characterImages = parsedCharacterImages.length
+      ? parsedCharacterImages
+      : (site.characterImages.length ? site.characterImages : DEFAULT_CHARACTER_IMAGES);
     const hero = urls;
     if (!hero.length) return setToast("히어로 이미지는 최소 1장이 필요합니다.");
     await setDoc(

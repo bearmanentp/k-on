@@ -4,6 +4,7 @@ import type { AuthProvider, DataProvider, RaRecord } from "react-admin";
 import { addDoc, collection, deleteDoc, doc, DocumentData, DocumentReference, DocumentSnapshot, getCountFromServer, getDoc, getDocs, limit as firestoreLimit, orderBy, query, runTransaction, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
+import { DEFAULT_CHARACTER_IMAGES, DEFAULT_K_ON_LOGO } from "@/lib/site-defaults";
 import { purchaseReward } from "@/lib/points";
 
 const permissionByResource:Record<string,string> = {
@@ -16,7 +17,7 @@ async function firebaseRequest<T>(request:Promise<T>,label:string,timeout=12_000
 let userReadyPromise:Promise<NonNullable<typeof auth>["currentUser"]>|null=null;
 function waitForUser(){if(auth?.currentUser)return Promise.resolve(auth.currentUser);if(!userReadyPromise)userReadyPromise=new Promise((resolve,reject)=>{if(!auth)return reject(new Error("Firebase가 연결되지 않았습니다."));const stop=onAuthStateChanged(auth,user=>{stop();resolve(user);},error=>{userReadyPromise=null;reject(error);});});return userReadyPromise;}
 function normalize(value:unknown):RaRecord {const record=value as RaRecord;return {...record,id:String(record.id)};}
-function defaultSiteSettings(){return normalize({id:"main",siteName:"K-ON! FANDOM KR",logoUrl:"",fontFamily:'"Pretendard", "Noto Sans KR", system-ui, sans-serif',accentColor:"#ff4f6d",heroEyebrow:"AFTER SCHOOL, TOGETHER",heroTitle:"좋아하는 음악으로\n다시 만나는 우리",heroDescription:"",heroImages:[],characterImages:[],communityMessage:""});}
+function defaultSiteSettings(){return normalize({id:"main",siteName:"K-ON! FANDOM KR",logoUrl:DEFAULT_K_ON_LOGO,fontFamily:'"Pretendard", "Noto Sans KR", system-ui, sans-serif',accentColor:"#ff4f6d",heroEyebrow:"AFTER SCHOOL, TOGETHER",heroTitle:"좋아하는 음악으로\n다시 만나는 우리",heroDescription:"K-ON!의 음악과 일상을 함께 기억하고 새로운 순간을 만드는 한국 팬 커뮤니티.",heroImages:["/hero-music-room.png"],characterImages:DEFAULT_CHARACTER_IMAGES,communityMessage:"좋아하는 마음은 시간이 지나도 계속 연주됩니다."});}
 function defaultShop(){return normalize({id:"official",name:"팬덤 공식샵",description:"K-ON! FANDOM KR에서 운영하는 공식 팬덤 상점입니다.",active:true,order:0});}
 function preparePayload(resource:string,data:Record<string,unknown>){if(resource==="boardDefinitions")return{...data,collection:"boardPosts"};if(resource==="products")return{...data,shopId:String(data.shopId||"official"),active:data.active!==false,price:Number(data.price||0),rewardMode:String(data.rewardMode||"default"),rewardPoints:Number(data.rewardPoints||0)};if(resource==="shops")return{...data,active:data.active!==false,order:Number(data.order||0)};return data;}
 function cleanValue(value:unknown):unknown{if(value===undefined)return undefined;if(Array.isArray(value))return value.map(cleanValue).filter(item=>item!==undefined);if(value&&typeof value==="object"){if(Object.getPrototypeOf(value)!==Object.prototype)return value;return Object.fromEntries(Object.entries(value as Record<string,unknown>).map(([key,item])=>[key,cleanValue(item)]).filter(([,item])=>item!==undefined));}return value;}
