@@ -46,7 +46,7 @@ function PollBox({post}:{post:Post}){const options=(post.pollOptions||"").split(
 
 export default function BoardsPage(){
   const [route,setRoute]=useState<RouteState>({tab:"news"});
-  const [news,setNews]=useState<Post[]>([]),[notices,setNotices]=useState<Post[]>([]),[extraBoards,setExtraBoards]=useState<Record<string,Post[]>>({}),[inquiries,setInquiries]=useState<Inquiry[]>([]),[inquiryCategories,setInquiryCategories]=useState<InquiryCategory[]>(DEFAULT_INQUIRY_CATEGORIES),[boardDefinitions,setBoardDefinitions]=useState<BoardDefinition[]>(BOARD_DEFINITIONS);
+  const [news,setNews]=useState<Post[]>([]),[notices,setNotices]=useState<Post[]>([]),[extraBoards,setExtraBoards]=useState<Record<string,Post[]>>({}),[inquiries,setInquiries]=useState<Inquiry[]>([]),[savedInquiryCategories,setSavedInquiryCategories]=useState<InquiryCategory[]>([]),[categoriesInitialized,setCategoriesInitialized]=useState(false),[boardDefinitions,setBoardDefinitions]=useState<BoardDefinition[]>(BOARD_DEFINITIONS);
   const [user,setUser]=useState<User|null>(null),[role,setRole]=useState(""),[permissions,setPermissions]=useState<Permission[]>([]);
   const [logoUrl,setLogoUrl]=useState(LOGO),[siteName,setSiteName]=useState("K-ON! FANDOM KR"),[accent,setAccent]=useState("#ff4f6d");
   const [authMode,setAuthMode]=useState<"login"|"register">("login"),[toast,setToast]=useState(""),[page,setPage]=useState(1),[termsAccepted,setTermsAccepted]=useState(false),[privacyAccepted,setPrivacyAccepted]=useState(false),[authNotice,setAuthNotice]=useState("");
@@ -60,9 +60,10 @@ export default function BoardsPage(){
     const us=onSnapshot(doc(db,"siteSettings","main"),snap=>{if(!snap.exists())return;const data=snap.data();setLogoUrl(String(data.logoUrl||LOGO));setSiteName(String(data.siteName||"K-ON! FANDOM KR"));setAccent(String(data.accentColor||"#ff4f6d"));});
     const un=onSnapshot(query(collection(db,"news"),orderBy("createdAt","desc")),snap=>setNews(snap.docs.map(item=>({id:item.id,...item.data()} as Post))));
     const uo=onSnapshot(query(collection(db,"notices"),orderBy("createdAt","desc")),snap=>setNotices(snap.docs.map(item=>({id:item.id,...item.data()} as Post))));
-    const uc=onSnapshot(collection(db,"inquiryCategories"),snap=>{const list=snap.docs.map(item=>({id:item.id,...item.data()} as InquiryCategory)).filter(item=>item.active!==false).sort((a,b)=>(a.order??0)-(b.order??0));setInquiryCategories(list.length?list:DEFAULT_INQUIRY_CATEGORIES);});
+    const uc=onSnapshot(collection(db,"inquiryCategories"),snap=>{const list=snap.docs.map(item=>({id:item.id,...item.data()} as InquiryCategory)).filter(item=>item.active!==false).sort((a,b)=>(a.order??0)-(b.order??0));setSavedInquiryCategories(list);});
+    const uci=onSnapshot(doc(db,"inquiryCategorySettings","main"),snap=>setCategoriesInitialized(snap.exists()&&snap.data().initialized===true));
     const ub=onSnapshot(collection(db,"boardDefinitions"),snap=>{const list=snap.docs.map(item=>{const data=item.data() as Omit<BoardDefinition,"icon">;return {...data,collection:"boardPosts",key:data.key||item.id,icon:BOARD_BY_KEY[data.key||item.id]?.icon||Newspaper} as BoardDefinition;}).filter(item=>item.active!==false).sort((a,b)=>(a.order??0)-(b.order??0));setBoardDefinitions([...BOARD_DEFINITIONS,...list.filter(item=>!BOARD_DEFINITIONS.some(base=>base.key===item.key))]);});
-    return()=>{ua();us();un();uo();uc();ub();};
+    return()=>{ua();us();un();uo();uc();uci();ub();};
   },[]);
   useEffect(()=>{
     if(!db||!firebaseConfigured)return;
@@ -79,6 +80,7 @@ export default function BoardsPage(){
   },[user,isAdmin]);
 
   const boardByKey=useMemo(()=>({...BOARD_BY_KEY,...Object.fromEntries(boardDefinitions.map(board=>[board.key,board]))}),[boardDefinitions]);
+  const inquiryCategories=useMemo(()=>savedInquiryCategories.length?savedInquiryCategories:categoriesInitialized?[]:DEFAULT_INQUIRY_CATEGORIES,[savedInquiryCategories,categoriesInitialized]);
   const posts=useMemo(()=>route.tab==="news"?news:route.tab==="notices"?notices:extraBoards[route.tab]||[],[route.tab,news,notices,extraBoards]);
   const selectedPost=route.itemId&&route.tab!=="inquiries"?posts.find(item=>item.id===route.itemId):undefined;
   const selectedInquiry=route.itemId&&route.tab==="inquiries"?inquiries.find(item=>item.id===route.itemId):undefined;

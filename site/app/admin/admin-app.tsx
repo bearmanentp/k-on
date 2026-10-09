@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot, setDoc, writeBatch } from "firebase/firestore";
 import {
   Admin,
   BooleanField,
@@ -28,6 +28,7 @@ import {
   useGetList,
   useNotify,
   usePermissions,
+  useRefresh,
 } from "react-admin";
 import {
   Bell,
@@ -301,6 +302,8 @@ function InquiryEdit() {
   );
 }
 function InquiryCategoryList() {
+  const refresh=useRefresh(),notify=useNotify();
+  useEffect(()=>{if(!db)return;const firestore=db;let active=true;(async()=>{try{const marker=doc(firestore,"inquiryCategorySettings","main"),markerSnapshot=await getDoc(marker);if(markerSnapshot.exists())return;const existing=await getDocs(collection(firestore,"inquiryCategories")),existingIds=new Set(existing.docs.map(item=>item.id)),batch=writeBatch(firestore);[{id:"event",label:"행사",description:"행사 일정과 운영 문의",order:10},{id:"reservation",label:"예약",description:"예약·예매 신청 문의",order:20},{id:"site",label:"사이트 이용",description:"계정과 사이트 이용 문의",order:30},{id:"etc",label:"기타",description:"기타 문의",order:40}].filter(item=>!existingIds.has(item.id)).forEach(item=>batch.set(doc(firestore,"inquiryCategories",item.id),{label:item.label,description:item.description,order:item.order,active:true,createdAt:new Date().toISOString()}));batch.set(marker,{initialized:true,initializedAt:new Date().toISOString()});await batch.commit();if(active)refresh();}catch(error){if(active)notify(error instanceof Error?error.message:"기본 문의 카테고리를 등록하지 못했습니다.",{type:"error"});}})();return()=>{active=false;};},[notify,refresh]);
   return (
     <List sort={{ field: "order", order: "ASC" }}>
       <Datagrid rowClick="edit">
