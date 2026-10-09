@@ -27,11 +27,12 @@ site/public/firebase-messaging-sw.js
 **/.next/
 **/.vinext/
 **/dist/
-**/build/
+# 저장소 루트에 생기는 임시 build 폴더만 제외한다.
+# site/build/는 배포 플러그인 소스이므로 추적해야 한다.
+/build/
 **/out/
 **/.wrangler/
 **/.sites-runtime/
-**/.openai/
 **/.codex/
 **/.agents/
 **/coverage/
