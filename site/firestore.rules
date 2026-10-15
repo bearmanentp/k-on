@@ -46,6 +46,13 @@ service cloud.firestore {
     function managesShop(shopId) {
       return has('design') || isAssignedShopManager(shopId);
     }
+    function managesEvent(eventId) {
+      let event = get(/databases/$(database)/documents/events/$(eventId)).data;
+      return has('events') || (signedIn() && (
+        (event.managerUids is list && request.auth.uid in event.managerUids)
+        || (request.auth.token.email is string && event.managerEmails is list && request.auth.token.email in event.managerEmails)
+      ));
+    }
     function validNicknameProfile(uid, data) {
       return data.nickname is string
         && data.nickname.size() >= 2
@@ -113,7 +120,7 @@ service cloud.firestore {
         && data.userEmail == request.auth.token.email
         && data.status == 'received'
         && data.createdAtServer == request.time
-        && data.keys().hasOnly(['userId','userEmail','eventId','eventTitle','answers','seatLabel','bookingType','amount','createdAt','createdAtServer','status'])
+        && data.keys().hasOnly(['userId','userEmail','eventId','eventTitle','answers','seatLabel','bookingType','amount','timeSlotId','timeSlotLabel','eventStartAt','ticketCode','qrRevealAt','createdAt','createdAtServer','status'])
         && event.status == 'open'
         && data.eventTitle == event.title
         && data.bookingType == event.bookingType
@@ -137,22 +144,23 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/events/$(id)).data.bookingType == 'assigned_seat'
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.eventId == id
-          && request.resource.data.seatLabel == seatId
+          && request.resource.data.seatKey == seatId
           && request.resource.data.reservationId == id + '__' + request.auth.uid
           && getAfter(/databases/$(database)/documents/reservations/$(request.resource.data.reservationId)).data.userId == request.auth.uid
-          && getAfter(/databases/$(database)/documents/reservations/$(request.resource.data.reservationId)).data.seatLabel == seatId;
+          && getAfter(/databases/$(database)/documents/reservations/$(request.resource.data.reservationId)).data.seatLabel == request.resource.data.seatLabel
+          && getAfter(/databases/$(database)/documents/reservations/$(request.resource.data.reservationId)).data.timeSlotId == request.resource.data.timeSlotId;
         allow update: if false;
         allow delete: if has('applications') || has('events');
       }
       match /reservationMeta/{metaId} {
         allow read: if true;
         allow create: if signedIn()
-          && metaId == 'counter'
+          && metaId.matches('counter.*')
           && request.resource.data.activeCount == 1
           && request.resource.data.activeCount <= get(/databases/$(database)/documents/events/$(id)).data.capacity
           && getAfter(/databases/$(database)/documents/reservations/$(id + '__' + request.auth.uid)).data.createdAtServer == request.time;
         allow update: if (signedIn()
-          && metaId == 'counter'
+          && metaId.matches('counter.*')
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeCount','updatedAt'])
           && request.resource.data.activeCount == resource.data.activeCount + 1
           && request.resource.data.activeCount <= get(/databases/$(database)/documents/events/$(id)).data.capacity
@@ -184,6 +192,72 @@ service cloud.firestore {
     match /ads/{id} {
       allow read: if true;
       allow create, update, delete: if has('design') || has('notices');
+    }
+    match /sitePopups/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('events') || has('design');
+    }
+    match /featurePages/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('events') || has('notices');
+    }
+    match /movieWatchTopics/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('events') || has('notices');
+    }
+    match /movieAlertStates/{id} {
+      allow read: if true;
+      allow write: if has('events');
+    }
+    match /movieAlertEvents/{id} {
+      allow read: if true;
+      allow create, update, delete: if has('events');
+    }
+    match /movieAlertSubscriptions/{id} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('events'));
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userEmail == request.auth.token.email
+        && id == request.resource.data.topicId + '__' + request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.topicId == resource.data.topicId
+        && request.resource.data.userEmail == request.auth.token.email;
+      allow delete: if signedIn() && (resource.data.userId == request.auth.uid || has('events'));
+    }
+    match /benefitDepletionReports/{id} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.topicId is string
+        && request.resource.data.screeningKey is string
+        && get(/databases/$(database)/documents/movieAlertStates/$(request.resource.data.topicId)).data.reportableShowtimeKeys is list
+        && request.resource.data.screeningKey in get(/databases/$(database)/documents/movieAlertStates/$(request.resource.data.topicId)).data.reportableShowtimeKeys
+        && id == request.resource.data.topicId + '__' + request.resource.data.screeningKey + '__' + request.auth.uid
+        && request.resource.data.status == 'reported'
+        && request.resource.data.ticketProofUrl is string
+        && request.resource.data.ticketProofUrl.matches('https://.*')
+        && request.resource.data.createdAt is string;
+      allow update: if has('events') || has('applications');
+      allow delete: if (signedIn() && resource.data.userId == request.auth.uid) || has('events') || has('applications');
+    }
+    match /benefitReceiptConfirmations/{id} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.topicId is string
+        && request.resource.data.benefitKey is string
+        && request.resource.data.screeningKey is string
+        && get(/databases/$(database)/documents/movieAlertStates/$(request.resource.data.topicId)).data.reportableShowtimeKeys is list
+        && request.resource.data.screeningKey in get(/databases/$(database)/documents/movieAlertStates/$(request.resource.data.topicId)).data.reportableShowtimeKeys
+        && id == request.resource.data.topicId + '__' + request.resource.data.benefitKey + '__' + request.auth.uid
+        && request.resource.data.status == 'reported'
+        && request.resource.data.ticketProofUrl is string
+        && request.resource.data.ticketProofUrl.matches('https://.*')
+        && request.resource.data.createdAt is string;
+      allow update: if has('events') || has('applications');
+      allow delete: if (signedIn() && resource.data.userId == request.auth.uid) || has('events') || has('applications');
     }
     match /applications/{id} {
       allow create: if request.resource.data.keys().hasOnly(['eventId','eventTitle','answers','createdAt','status'])
@@ -227,10 +301,46 @@ service cloud.firestore {
     }
     match /reservations/{id} {
       allow create: if validReservation(id);
-      allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('applications') || has('events'));
-      allow update: if (validReservation(id) && resource.data.userId == request.auth.uid && resource.data.status == 'canceled')
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || has('applications') || managesEvent(resource.data.eventId));
+      allow update: if (signedIn() && resource.data.userId == request.auth.uid
+          && resource.data.status != 'canceled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['qrNonce','qrIssuedAt'])
+          && request.resource.data.qrNonce is string
+          && request.resource.data.qrNonce.size() >= 20)
+        || (signedIn()
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.userEmail == request.auth.token.email
+          && resource.data.userId != request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userId','userEmail','giftedFromUserId','giftedFromEmail','giftedAt'])
+          && getAfter(/databases/$(database)/documents/ticketGifts/$(id)).data.status == 'accepted'
+          && getAfter(/databases/$(database)/documents/ticketGifts/$(id)).data.acceptedBy == request.auth.uid)
+        || (managesEvent(resource.data.eventId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['checkInAt','checkedInBy','status'])
+          && request.resource.data.checkedInBy == request.auth.uid
+          && request.resource.data.status == 'completed')
         || has('applications') || has('events');
       allow delete: if has('applications') || has('events');
+    }
+    match /ticketGifts/{reservationId} {
+      allow create: if signedIn()
+        && request.resource.data.fromUserId == request.auth.uid
+        && request.resource.data.fromEmail == request.auth.token.email
+        && request.resource.data.reservationId == reservationId
+        && request.resource.data.status == 'pending'
+        && get(/databases/$(database)/documents/reservations/$(reservationId)).data.userId == request.auth.uid;
+      allow read: if signedIn() && (
+        resource.data.fromUserId == request.auth.uid
+        || resource.data.recipientEmail == request.auth.token.email
+        || has('applications') || managesEvent(resource.data.eventId)
+      );
+      allow update: if signedIn()
+        && resource.data.status == 'pending'
+        && resource.data.recipientEmail == request.auth.token.email
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','acceptedAt','acceptedBy'])
+        && request.resource.data.status == 'accepted'
+        && request.resource.data.acceptedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/reservations/$(reservationId)).data.userId == request.auth.uid;
+      allow delete: if signedIn() && (resource.data.fromUserId == request.auth.uid || has('applications'));
     }
     match /users/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;

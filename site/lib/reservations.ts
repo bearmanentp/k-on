@@ -2,6 +2,7 @@ import { doc, DocumentData, DocumentReference, Firestore, runTransaction, server
 import type { User } from "firebase/auth";
 
 type SeatCell = { label?: string; kind?: string };
+type EventTimeSlot = { id?: string; label?: string; startAt?: string; endAt?: string; capacity?: number };
 type ReservableEvent = {
   title?: string;
   status?: string;
@@ -14,6 +15,8 @@ type ReservableEvent = {
   seatsPerRow?: number;
   blockedSeats?: string[];
   seatLayout?: { cells?: SeatCell[] };
+  timeSlots?: EventTimeSlot[];
+  qrRevealAt?: string;
 };
 
 export type ReservationResult = { reservationId: string; seatLabel?: string };
@@ -41,14 +44,17 @@ export async function reserveEventInFirestore(
   eventId: string,
   answers: Record<string, string>,
   requestedSeatValue?: string,
+  requestedTimeSlotIdValue?: string,
 ): Promise<ReservationResult> {
   const normalizedEventId = String(eventId || "").trim();
   if (!normalizedEventId) throw new Error("행사 정보가 올바르지 않습니다.");
   const requestedSeat = String(requestedSeatValue || "").trim().toUpperCase();
+  const requestedTimeSlotId = String(requestedTimeSlotIdValue || "").trim();
   const reservationId = `${normalizedEventId}__${user.uid}`;
   const eventRef = doc(firestore, "events", normalizedEventId);
   const reservationRef = doc(firestore, "reservations", reservationId);
-  const counterRef = doc(firestore, "events", normalizedEventId, "reservationMeta", "counter");
+  const counterId = requestedTimeSlotId ? `counter_${requestedTimeSlotId}` : "counter";
+  const counterRef = doc(firestore, "events", normalizedEventId, "reservationMeta", counterId);
 
   let confirmedSeat = "";
   await runTransaction(firestore, async transaction => {
@@ -64,19 +70,25 @@ export async function reserveEventInFirestore(
     if (event.status !== "open") throw new Error("마감된 행사입니다.");
     if (event.bookingOpenAt && now < new Date(event.bookingOpenAt).getTime()) throw new Error("아직 예매가 시작되지 않았습니다.");
     if (event.bookingCloseAt && now > new Date(event.bookingCloseAt).getTime()) throw new Error("예매 기간이 종료되었습니다.");
+    const timeSlots = Array.isArray(event.timeSlots) ? event.timeSlots : [];
+    const selectedTimeSlot = timeSlots.length ? timeSlots.find(slot => String(slot.id || "") === requestedTimeSlotId) : null;
+    if (timeSlots.length && !selectedTimeSlot) throw new Error("관람 시간대를 선택해 주세요.");
+    if (selectedTimeSlot?.startAt && now > new Date(selectedTimeSlot.startAt).getTime()) throw new Error("이미 시작된 시간대입니다.");
 
     let seatRef: DocumentReference<DocumentData> | null = null;
     let counterCount = 0;
     if (event.bookingType === "assigned_seat") {
       if (!validSeat(event, requestedSeat)) throw new Error("선택할 수 없는 좌석입니다.");
-      seatRef = doc(firestore, "events", normalizedEventId, "seats", requestedSeat);
+      const seatDocumentId = requestedTimeSlotId ? `${requestedTimeSlotId}__${requestedSeat}` : requestedSeat;
+      seatRef = doc(firestore, "events", normalizedEventId, "seats", seatDocumentId);
       const seatSnapshot = await transaction.get(seatRef);
       if (seatSnapshot.exists()) throw new Error("방금 다른 회원이 선택한 좌석입니다. 다른 좌석을 선택해 주세요.");
       confirmedSeat = requestedSeat;
     } else {
       const counterSnapshot = await transaction.get(counterRef);
       counterCount = Math.max(0, Number(counterSnapshot.data()?.activeCount || 0));
-      if (counterCount >= Math.max(1, Number(event.capacity || 1))) throw new Error("예약 정원이 마감되었습니다.");
+      const slotCapacity = Math.max(1, Number(selectedTimeSlot?.capacity || event.capacity || 1));
+      if (counterCount >= slotCapacity) throw new Error("예약 정원이 마감되었습니다.");
     }
 
     const reservation = {
@@ -88,6 +100,11 @@ export async function reserveEventInFirestore(
       seatLabel: confirmedSeat || null,
       bookingType: event.bookingType === "assigned_seat" ? "assigned_seat" : "general",
       amount: Math.max(0, Number(event.price || 0)),
+      timeSlotId: requestedTimeSlotId || null,
+      timeSlotLabel: selectedTimeSlot?.label || null,
+      eventStartAt: selectedTimeSlot?.startAt || "",
+      ticketCode: crypto.randomUUID(),
+      qrRevealAt: String(event.qrRevealAt || selectedTimeSlot?.startAt || ""),
       createdAt: new Date().toISOString(),
       createdAtServer: serverTimestamp(),
       status: "received",
@@ -98,6 +115,8 @@ export async function reserveEventInFirestore(
       seatLabel: confirmedSeat,
       reservationId,
       userId: user.uid,
+      timeSlotId: requestedTimeSlotId || null,
+      seatKey: requestedTimeSlotId ? `${requestedTimeSlotId}__${confirmedSeat}` : confirmedSeat,
       createdAt: reservation.createdAt,
     });
     else transaction.set(counterRef, { activeCount: counterCount + 1, updatedAt: serverTimestamp() }, { merge: true });

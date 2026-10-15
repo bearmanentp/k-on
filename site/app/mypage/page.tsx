@@ -11,8 +11,10 @@ import { Input } from "@/components/ui/input";
 import { auth, db } from "@/lib/firebase";
 import { authErrorMessage, claimNickname, ensureReferralCode } from "@/lib/auth";
 import { PublicHeader } from "@/app/components/public-header";
+import { TicketCard } from "./ticket-card";
+import { acceptTicketGift, type TicketGift, type TicketReservation } from "@/lib/tickets";
 
-type Reservation = { id:string; eventTitle?:string; createdAt?:string; status?:string; seatLabel?:string };
+type Reservation = TicketReservation & { createdAt?:string };
 type AccountMessage = { id:string; title?:string; body?:string; createdAt?:string; read?:boolean };
 type MemberProfile = { nickname?:string; points?:number; nicknameChangedAt?:string; referralCode?:string; memberNumber?:number };
 
@@ -31,6 +33,7 @@ export default function MyPage(){
   const [profile,setProfile]=useState<MemberProfile>({});
   const [reservations,setReservations]=useState<Reservation[]>([]);
   const [messages,setMessages]=useState<AccountMessage[]>([]);
+  const [ticketGifts,setTicketGifts]=useState<TicketGift[]>([]);
   const [saving,setSaving]=useState(false);
   const [notice,setNotice]=useState("");
   const [generatedReferralCode,setGeneratedReferralCode]=useState("");
@@ -46,6 +49,10 @@ export default function MyPage(){
     const stopReservations=onSnapshot(query(collection(db,"reservations"),where("userId","==",user.uid)),snapshot=>setReservations(snapshot.docs.map(item=>({id:item.id,...item.data()}) as Reservation)));
     const stopMessages=onSnapshot(query(collection(db,"accountMessages"),where("userId","==",user.uid)),snapshot=>setMessages(snapshot.docs.map(item=>({id:item.id,...item.data()}) as AccountMessage)));
     return()=>{stopProfile();stopReservations();stopMessages();};
+  },[user]);
+  useEffect(()=>{
+    if(!user?.email||!db){setTicketGifts([]);return;}
+    return onSnapshot(query(collection(db,"ticketGifts"),where("recipientEmail","==",user.email.toLowerCase())),snapshot=>setTicketGifts(snapshot.docs.map(item=>({id:item.id,...item.data()}) as TicketGift).filter(item=>item.status==="pending")));
   },[user]);
   useEffect(()=>{
     if(!user||!db)return;
@@ -81,6 +88,12 @@ export default function MyPage(){
     catch{setNotice("추천 코드 복사에 실패했습니다. 코드를 직접 선택해 주세요.");}
   }
 
+  async function receiveGift(gift:TicketGift){
+    if(!user||!db)return;
+    try{await acceptTicketGift(db,user,gift);setNotice(`${gift.eventTitle} 티켓을 받았습니다.`);}
+    catch(error){setNotice(error instanceof Error?error.message:"티켓을 받지 못했습니다.");}
+  }
+
   const siteFooter=<footer className="site-footer"><div className="brand"><Image src={logoUrl} alt="" width={124} height={44} unoptimized/><span>{siteName}</span></div><p>팬덤 작성 콘텐츠는 각 작성자에게 권리가 있으며, K-ON! 원작·상표·캐릭터의 권리는 각 권리자에게 있습니다. 비영리 비공식 팬 커뮤니티입니다.</p></footer>;
 
   if(!authReady)return <main className="mypage-loading">마이페이지를 불러오는 중입니다.</main>;
@@ -91,7 +104,7 @@ export default function MyPage(){
     <header className="mypage-hero"><div className="mypage-avatar" aria-hidden="true">{(nickname||user.email||"K").slice(0,1).toUpperCase()}</div><div className="mypage-identity"><small>MY FAN PROFILE</small><h1>{nickname||"프로필을 등록해 주세요"}</h1><p>{user.email}</p></div><div className="mypage-stats" aria-label="회원 활동 요약"><div><strong>{Number(profile.points||0).toLocaleString()}P</strong><span>보유 포인트</span></div><div><strong>{reservations.length}</strong><span>예약</span></div><div><strong>{unreadCount}</strong><span>읽지 않은 쪽지</span></div></div></header>
     <div className="mypage-grid">
       <section id="settings" className="mypage-panel mypage-profile-panel"><div className="mypage-panel-heading"><span><Settings2/></span><div><small>PROFILE</small><h2>프로필 설정</h2></div></div><p className="mypage-panel-description">커뮤니티에서 사용할 닉네임을 등록하세요. 닉네임은 중복 사용할 수 없으며 변경 후 30일 동안 다시 바꿀 수 없습니다.</p><form className="mypage-profile-form" onSubmit={saveProfile}><label htmlFor="nickname">닉네임</label><Input id="nickname" name="nickname" defaultValue={nickname} minLength={2} maxLength={20} placeholder="2~20자 닉네임" required/><p>한글, 영문, 숫자, 공백과 일부 기호(_ . -)를 사용할 수 있습니다.</p><label>친구에게 줄 내 추천 코드</label>{referralCode?<div className="mypage-referral-code"><code>{referralCode}</code><Button type="button" variant="outline" onClick={copyReferralCode}>복사</Button></div>:<p>추천 코드를 준비하고 있습니다.</p>}{profile.memberNumber&&<p>{profile.memberNumber}번째 회원</p>}<Button disabled={saving}>{saving?"저장 중…":nickname?"프로필 수정":"프로필 등록"}</Button>{notice&&<div className="mypage-notice" role="status">{notice}</div>}</form></section>
-      <section className="mypage-panel"><div className="mypage-panel-heading"><span><TicketCheck/></span><div><small>RESERVATION</small><h2>내 예약</h2></div><Link href="/events" aria-label="행사 예약 페이지로 이동"><ChevronRight/></Link></div><div className="mypage-list">{sortedReservations.length?sortedReservations.slice(0,4).map(item=><article key={item.id}><div><strong>{item.eventTitle||"팬 행사"}{item.seatLabel&&` · ${item.seatLabel} 좌석`}</strong><time>{displayDate(item.createdAt)}</time></div><span className={`mypage-status ${item.status||"received"}`}>{statusLabel[item.status||""]||item.status||"접수"}</span></article>):<div className="mypage-empty"><CalendarDays/><p>아직 예약한 행사가 없습니다.</p><Link href="/events">행사 둘러보기</Link></div>}</div></section>
+      <section className="mypage-panel mypage-ticket-panel"><div className="mypage-panel-heading"><span><TicketCheck/></span><div><small>RESERVATION & TICKET</small><h2>내 예매표</h2></div><Link href="/events" aria-label="행사 예약 페이지로 이동"><ChevronRight/></Link></div>{ticketGifts.length>0&&<div className="ticket-gift-inbox"><b>도착한 티켓 선물</b>{ticketGifts.map(gift=><article key={gift.id}><span><strong>{gift.eventTitle}</strong><small>{gift.fromEmail}님이 보냄</small></span><Button type="button" onClick={()=>receiveGift(gift)}>받기</Button></article>)}</div>}<div className="ticket-list">{sortedReservations.length&&user&&db?sortedReservations.map(item=><TicketCard key={item.id} firestore={db!} user={user} ticket={item}/>):<div className="mypage-empty"><CalendarDays/><p>아직 예약한 행사가 없습니다.</p><Link href="/events">행사 둘러보기</Link></div>}</div></section>
       <section className="mypage-panel mypage-message-panel"><div className="mypage-panel-heading"><span><Bell/></span><div><small>MESSAGE</small><h2>내 쪽지</h2></div></div><div className="mypage-list">{sortedMessages.length?sortedMessages.slice(0,5).map(message=><article key={message.id} className={message.read?"":"unread"}><span className="mypage-message-dot" aria-label={message.read?"읽음":"읽지 않음"}/><div><strong>{message.title||"회원 알림"}</strong><p>{message.body||"새로운 안내가 도착했습니다."}</p><time>{displayDate(message.createdAt)}</time></div></article>):<div className="mypage-empty"><Sparkles/><p>도착한 쪽지가 없습니다.</p></div>}</div></section>
     </div>
     {siteFooter}

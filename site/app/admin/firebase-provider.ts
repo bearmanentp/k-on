@@ -8,7 +8,7 @@ import { DEFAULT_CHARACTER_IMAGES, DEFAULT_K_ON_LOGO } from "@/lib/site-defaults
 import { purchaseReward } from "@/lib/points";
 
 const permissionByResource:Record<string,string> = {
-  notices:"notices", news:"notices", events:"events", seatLayouts:"events", inquiries:"applications", inquiryCategories:"applications",
+  notices:"notices", news:"notices", events:"events", seatLayouts:"events", sitePopups:"events", featurePages:"events", movieWatchTopics:"events", movieAlertStates:"events", benefitDepletionReports:"events", benefitReceiptConfirmations:"events", inquiries:"applications", inquiryCategories:"applications",
   reservations:"applications", accountMessages:"applications", adminNotices:"users", users:"users", pointHistory:"points", pointSettings:"points", orders:"applications", ads:"design", products:"design", shops:"design", shopSettings:"design", imageHosting:"design", adminDirectory:"users", siteSettings:"design", boardDefinitions:"notices", boardPosts:"notices",
 };
 

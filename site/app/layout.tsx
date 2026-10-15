@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { SitePopup } from "./components/site-popup";
 
 export const metadata: Metadata = {
   title: "K-ON! FANDOM KR",
@@ -7,5 +8,5 @@ export const metadata: Metadata = {
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="ko"><body>{children}</body></html>;
+  return <html lang="ko"><body>{children}<SitePopup/></body></html>;
 }

@@ -45,6 +45,7 @@ import {
   ShieldCheck,
   Store,
   Ticket,
+  Film,
 } from "lucide-react";
 import { HashRouter, Link, useLocation } from "react-router-dom";
 import { useFormContext } from "react-hook-form";
@@ -203,7 +204,7 @@ function EventList() {
         <TextField source="place" label="장소" />
         <TextField source="bookingType" label="예매 방식" />
         <NumberField source="capacity" label="정원" />
-        <FunctionField label="상태" render={(record:{status?:string})=>record.status==="answered"?"답변 완료":record.status==="canceled"?"문의 취소":"답변 대기"} />
+        <FunctionField label="상태" render={(record:{status?:string})=>record.status==="open"?"접수 중":"마감"} />
         <EditButton />
         <DeleteButton />
       </Datagrid>
@@ -216,6 +217,14 @@ function parseEventQuestions(value:string){
 function formatEventQuestions(value:unknown){
   return Array.isArray(value)?value.map((field:{label?:string;type?:string;required?:boolean;options?:string[]})=>[field.label||"",field.type||"text",field.required?"required":"optional",Array.isArray(field.options)?field.options.join(","):""].join(" | ").replace(/ \| $/,"")).join("\n"):String(value||"");
 }
+function parseEventTimeSlots(value:string){
+  return String(value||"").split("\n").map(line=>line.trim()).filter(Boolean).map((line,index)=>{const [idValue,label,startAt,endAt,capacityValue]=line.split("|").map(part=>part.trim());return{id:idValue||`slot-${index+1}`,label:label||idValue||`시간대 ${index+1}`,startAt:startAt||"",endAt:endAt||"",capacity:Math.max(1,Number(capacityValue||1))};});
+}
+function formatEventTimeSlots(value:unknown){
+  return Array.isArray(value)?value.map((slot:{id?:string;label?:string;startAt?:string;endAt?:string;capacity?:number})=>[slot.id||"",slot.label||"",slot.startAt||"",slot.endAt||"",slot.capacity||""].join(" | ")).join("\n"):String(value||"");
+}
+const commaListFormat=(value:unknown)=>Array.isArray(value)?value.join(", "):String(value||"");
+const commaListParse=(value:string)=>value.split(",").map(item=>item.trim()).filter(Boolean);
 function EventForm() {
   return (
       <SimpleForm defaultValues={{status:"open",bookingType:"general",capacity:20,price:0,seatRows:0,seatsPerRow:0,formSchema:[{id:"question-1",label:"닉네임",type:"text",required:true,options:[]}]}}>
@@ -229,12 +238,19 @@ function EventForm() {
         <TextInput source="place" label="장소" validate={required()} />
         <DateTimeInput source="bookingOpenAt" label="예매 시작" helperText="비워 두면 등록 즉시 예매를 받습니다." />
         <DateTimeInput source="bookingCloseAt" label="예매 마감" helperText="비워 두면 행사 상태를 마감으로 바꿀 때까지 열립니다." />
+        <DateTimeInput source="publishAt" label="행사 페이지 공개 시작" helperText="이 시각 전에는 행사·예약 화면에 노출되지 않습니다." />
+        <DateTimeInput source="hideAt" label="행사 페이지 공개 종료" helperText="비워 두면 계속 노출됩니다." />
+        <DateTimeInput source="qrRevealAt" label="티켓 QR 공개 시각" helperText="이 시각 전에는 티켓만 보이고 QR은 숨겨집니다." />
         <SelectInput source="bookingType" label="예매 방식" choices={[{id:"general",name:"일반 신청"},{id:"assigned_seat",name:"지정 좌석 예매"}]} />
         <NumberInput source="capacity" label="정원" min={1} />
         <NumberInput source="price" label="티켓 가격" min={0} helperText="무료 행사는 0원으로 입력하세요." />
         <FormDataConsumer>{({formData})=>formData.bookingType==="assigned_seat"?<><NumberInput source="seatRows" label="좌석 행 수" min={0} helperText="A행부터 자동 생성됩니다."/><NumberInput source="seatsPerRow" label="행당 좌석 수" min={0} helperText="예: 8행 × 12석"/><TextInput source="blockedSeats" label="사용하지 않는 좌석" fullWidth helperText="A1, A2처럼 쉼표로 구분하세요." format={(value:unknown)=>Array.isArray(value)?value.join(", "):String(value||"")} parse={(value:string)=>value.split(",").map(item=>item.trim().toUpperCase()).filter(Boolean)}/><SeatLayoutInput source="seatLayout"/></>:null}</FormDataConsumer>
         <TextInput source="summary" label="소개" multiline rows={4} fullWidth />
         <TextInput source="imageUrl" label="행사 이미지 URL" fullWidth />
+        <TextInput source="videoUrl" label="행사 영상 URL" fullWidth helperText="YouTube 또는 직접 재생 가능한 영상 링크" />
+        <TextInput source="timeSlots" label="상영·행사 시간대" multiline rows={6} fullWidth format={formatEventTimeSlots} parse={parseEventTimeSlots} helperText="시간대ID | 표시명 | 시작일시 | 종료일시 | 정원 형식으로 한 줄씩 입력하세요." />
+        <TextInput source="managerEmails" label="행사 담당자 이메일" fullWidth format={commaListFormat} parse={commaListParse} helperText="가입 이메일을 쉼표로 구분합니다. 행사 당일 QR 스캐너를 사용할 수 있습니다." />
+        <TextInput source="managerUids" label="행사 담당자 UID" fullWidth format={commaListFormat} parse={commaListParse} helperText="필요한 경우 UID도 쉼표로 구분합니다." />
         <TextInput source="formSchema" label="신청 질문" multiline rows={8} fullWidth format={formatEventQuestions} parse={parseEventQuestions} helperText="질문 | 형태 | required/optional | 선택지 형식으로 한 줄씩 입력하세요." />
         <SelectInput
           source="status"
@@ -257,6 +273,22 @@ function EventEdit() {
 function EventCreate() {
   return <Create><EventForm /></Create>;
 }
+function PopupList(){return <List sort={{field:"createdAt",order:"DESC"}}><Datagrid rowClick="edit"><BooleanField source="active" label="사용"/><TextField source="title" label="팝업 제목"/><DateField source="publishAt" label="공개 시작" showTime/><DateField source="hideAt" label="공개 종료" showTime/><EditButton/><DeleteButton/></Datagrid></List>}
+function PopupForm(){return <SimpleForm defaultValues={{active:true,dismissible:true}}><TextInput source="title" label="팝업 제목" validate={required()} fullWidth/><TextInput source="summary" label="짧은 안내" multiline rows={3} fullWidth/><TextInput source="imageUrl" label="이미지 URL" fullWidth/><TextInput source="videoUrl" label="영상 URL" fullWidth/><TextInput source="linkUrl" label="이동 링크" fullWidth/><TextInput source="linkLabel" label="링크 버튼 문구"/><DateTimeInput source="publishAt" label="공개 시작"/><DateTimeInput source="hideAt" label="공개 종료"/><BooleanInput source="active" label="팝업 사용"/><BooleanInput source="dismissible" label="사용자 닫기 허용"/><RichTextInput label="팝업 내용"/></SimpleForm>}
+function PopupCreate(){return <Create><PopupForm/></Create>}
+function PopupEdit(){return <Edit><PopupForm/></Edit>}
+function FeaturePageList(){return <List sort={{field:"order",order:"ASC"}}><Datagrid rowClick="edit"><BooleanField source="active" label="공개"/><BooleanField source="showInMenu" label="메뉴"/><TextField source="menuLabel" label="메뉴명"/><TextField source="title" label="페이지 제목"/><TextField source="slug" label="주소 키"/><DateField source="publishAt" label="공개 시작" showTime/><EditButton/><DeleteButton/></Datagrid></List>}
+function FeaturePageForm(){return <SimpleForm defaultValues={{active:true,showInMenu:true,order:0}}><TextInput source="title" label="페이지 제목" validate={required()} fullWidth/><TextInput source="menuLabel" label="메뉴 탭 이름" validate={required()}/><TextInput source="slug" label="주소 키" validate={required()} helperText="영문·숫자·하이픈 권장. /special?slug=주소키로 열립니다."/><TextInput source="summary" label="요약" multiline rows={3} fullWidth/><TextInput source="coverImageUrl" label="대표 이미지 URL" fullWidth/><TextInput source="videoUrl" label="영상 URL" fullWidth/><TextInput source="eventId" label="연결할 행사 ID" helperText="입력하면 행사 신청·예매 버튼을 표시합니다."/><DateTimeInput source="publishAt" label="페이지 공개 시작"/><DateTimeInput source="hideAt" label="페이지 공개 종료"/><BooleanInput source="active" label="페이지 공개"/><BooleanInput source="showInMenu" label="상단 메뉴에 표시"/><NumberInput source="order" label="메뉴 순서" min={0}/><RichTextInput label="페이지 본문"/></SimpleForm>}
+function FeaturePageCreate(){return <Create><FeaturePageForm/></Create>}
+function FeaturePageEdit(){return <Edit><FeaturePageForm/></Edit>}
+function MovieWatchList(){return <List sort={{field:"title",order:"ASC"}}><Datagrid rowClick="edit"><BooleanField source="active" label="감시"/><TextField source="title" label="알림 주제"/><TextField source="movieCode" label="롯데 영화 코드"/><NumberField source="monitorDays" label="확인 일수"/><EditButton/><DeleteButton/></Datagrid></List>}
+function MovieWatchForm(){return <SimpleForm defaultValues={{active:true,topicId:"k-on-movie-2026",title:"케이온 재재재개봉",movieCode:"22284",searchKeywords:"케이온,K-On!",cinemaIds:"1016,1004,1005,1003,1008,1015",monitorDays:8,pageSlug:"k-on-movie-2026",bookingUrl:"https://www.lottecinema.co.kr/NLCHS/Ticketing?movieCd=22284&movieName=%EC%BC%80%EC%9D%B4%EC%98%A8",benefitSourceUrls:"https://www.lottecinema.co.kr/NLCHS/Event/EventTemplateInfo?eventId=201010016926683",benefitSoldOutKeywords:"소진,매진,증정 종료",benefitWeeks:"week-1|1주차 특전"}}><TextInput source="topicId" label="알림 식별자" validate={required()} helperText="기본값을 유지하세요."/><TextInput source="title" label="알림 주제" validate={required()} fullWidth/><TextInput source="movieCode" label="롯데시네마 영화 코드" validate={required()} helperText="이번 케이온 재재재개봉 코드는 22284입니다."/><TextInput source="searchKeywords" label="영화명 검색어" fullWidth helperText="쉼표로 구분합니다."/><TextInput source="cinemaIds" label="기본 감시 지점 코드" fullWidth helperText="쉼표로 구분. 월드타워 1016, 건대입구 1004, 홍대입구 1005, 노원 1003, 청량리 1008, 신도림 1015"/><NumberInput source="monitorDays" label="오늘부터 확인할 날짜 수" min={1} max={14}/><TextInput source="bookingUrl" label="공식 예매 링크" fullWidth/><TextInput source="benefitSourceUrls" label="공식 특전 공지 URL" multiline rows={4} fullWidth helperText="한 줄에 하나씩 입력하면 공지 내용 변화를 함께 감지합니다."/><TextInput source="benefitSoldOutKeywords" label="특전 소진 감지 문구" fullWidth helperText="쉼표로 구분합니다."/><TextInput source="benefitWeeks" label="주차별 특전 목록" multiline rows={4} fullWidth helperText="week-1|1주차 특전 형식으로 한 줄씩 입력합니다. 받음 인원은 각 키별로 집계됩니다."/><TextInput source="pageSlug" label="연결 페이지 주소 키"/><BooleanInput source="active" label="자동 감시 사용"/></SimpleForm>}
+function MovieWatchCreate(){return <Create><MovieWatchForm/></Create>}
+function MovieWatchEdit(){return <Edit><MovieWatchForm/></Edit>}
+function BenefitReportList(){return <List sort={{field:"createdAt",order:"DESC"}}><Datagrid rowClick="edit"><TextField source="cinemaName" label="지점"/><TextField source="showDate" label="관람일"/><TextField source="showTime" label="회차"/><TextField source="benefitName" label="특전"/><TextField source="status" label="상태"/><DateField source="createdAt" label="제보 시각" showTime/><EditButton/><DeleteButton/></Datagrid></List>}
+function BenefitReportEdit(){return <Edit><SimpleForm><TextInput source="cinemaName" label="지점" disabled/><TextInput source="showDate" label="관람일" disabled/><TextInput source="showTime" label="회차" disabled/><TextInput source="benefitName" label="특전" disabled fullWidth/><TextInput source="ticketProofUrl" label="티켓 인증 이미지 링크" disabled fullWidth/><TextInput source="comment" label="현장 메모" multiline rows={4} disabled fullWidth/><SelectInput source="status" label="확인 상태" choices={[{id:"reported",name:"제보됨"},{id:"verified",name:"관리자 확인"},{id:"rejected",name:"허위·확인 불가"}]}/></SimpleForm></Edit>}
+function BenefitReceiptList(){return <List sort={{field:"createdAt",order:"DESC"}}><Datagrid rowClick="edit"><TextField source="benefitLabel" label="주차별 특전"/><TextField source="cinemaName" label="지점"/><TextField source="showDate" label="관람일"/><TextField source="showTime" label="회차"/><TextField source="status" label="상태"/><DateField source="createdAt" label="등록 시각" showTime/><EditButton/><DeleteButton/></Datagrid></List>}
+function BenefitReceiptEdit(){return <Edit><SimpleForm><TextInput source="benefitLabel" label="주차별 특전" disabled fullWidth/><TextInput source="cinemaName" label="지점" disabled/><TextInput source="showDate" label="관람일" disabled/><TextInput source="showTime" label="회차" disabled/><TextInput source="ticketProofUrl" label="관람 인증 이미지 링크" disabled fullWidth/><SelectInput source="status" label="확인 상태" choices={[{id:"reported",name:"등록됨"},{id:"verified",name:"관리자 확인"},{id:"rejected",name:"허위·확인 불가"}]}/></SimpleForm></Edit>}
 function InquiryList() {
   return (
     <List filters={searchFilters} sort={{ field: "createdAt", order: "DESC" }}>
@@ -353,6 +385,7 @@ function ReservationList() {
       <Datagrid rowClick="edit">
         <EmailField source="userEmail" label="회원" />
         <TextField source="eventTitle" label="행사" />
+        <TextField source="timeSlotLabel" label="시간대" />
         <TextField source="seatLabel" label="좌석" />
         <TextField source="status" label="상태" />
         <DateField source="createdAt" label="신청일" />
@@ -369,7 +402,10 @@ function ReservationEdit() {
         <TextInput source="userId" label="회원 UID" disabled fullWidth />
         <TextInput source="userEmail" label="회원" disabled fullWidth />
         <TextInput source="eventTitle" label="행사" disabled fullWidth />
+        <TextInput source="timeSlotLabel" label="시간대" disabled fullWidth />
         <TextInput source="seatLabel" label="배정 좌석" disabled />
+        <TextInput source="ticketCode" label="티켓 코드" disabled fullWidth />
+        <DateTimeInput source="checkInAt" label="입장 처리 시각" disabled />
         <TextInput source="answers" label="신청 답변" disabled multiline rows={6} fullWidth format={(value:unknown)=>typeof value==="object"&&value?Object.entries(value as Record<string,unknown>).map(([key,answer])=>`${key}: ${String(answer)}`).join("\n"):String(value||"")} />
         <SelectInput
           source="status"
@@ -415,7 +451,8 @@ function AdminList() {
   );
 }
 function MemberList(){
-  return <List filters={searchFilters} sort={{field:"joinedAt",order:"DESC"}}><div className="member-list-table"><div className="member-column-guide" aria-label="회원 목록 항목 설명"><span><b>UID</b><small>Firebase 회원 고유값</small></span><span><b>이메일</b><small>로그인 계정</small></span><span><b>닉네임</b><small>사이트 표시 이름</small></span><span><b>가입 순번</b><small>가입한 순서</small></span><span><b>포인트</b><small>현재 보유 포인트</small></span><span><b>가입일</b><small>최초 가입 시각</small></span><span><b>프로필 변경</b><small>닉네임 변경 시각</small></span></div><Datagrid><TextField source="id" label="UID"/><EmailField source="email" label="이메일"/><TextField source="nickname" label="닉네임" emptyText="미등록"/><NumberField source="memberNumber" label="가입 순번"/><NumberField source="points" label="포인트" emptyText="0"/><DateField source="joinedAt" label="가입일" showTime/><DateField source="nicknameChangedAt" label="프로필 변경" showTime/></Datagrid></div></List>;
+  const label=(title:string,description:string)=><span className="member-column-label"><b>{title}</b><small>{description}</small></span>;
+  return <List filters={searchFilters} sort={{field:"joinedAt",order:"DESC"}}><Datagrid bulkActionButtons={false}><TextField source="id" label={label("UID","Firebase 회원 고유값")}/><EmailField source="email" label={label("이메일","로그인 계정")}/><TextField source="nickname" label={label("닉네임","사이트 표시 이름")} emptyText="미등록"/><NumberField source="memberNumber" label={label("가입 순번","가입한 순서")}/><NumberField source="points" label={label("포인트","현재 보유 포인트")} emptyText="0"/><DateField source="joinedAt" label={label("가입일","최초 가입 시각")} showTime/><DateField source="nicknameChangedAt" label={label("프로필 변경","닉네임 변경 시각")} showTime/></Datagrid></List>;
 }
 function PointHistoryList(){
   return <List filters={searchFilters} sort={{field:"createdAt",order:"DESC"}}><Datagrid><EmailField source="userEmail" label="회원"/><NumberField source="delta" label="변동"/><NumberField source="balance" label="잔액"/><TextField source="reason" label="사유"/><DateField source="createdAt" label="처리일" showTime/></Datagrid></List>;
@@ -843,6 +880,11 @@ export default function AdminApp() {
           edit={EventEdit}
           create={EventCreate}
         />
+        <Resource name="sitePopups" options={{label:"사이트 팝업"}} icon={Megaphone} list={PopupList} edit={PopupEdit} create={PopupCreate}/>
+        <Resource name="featurePages" options={{label:"중요 행사 페이지"}} icon={Newspaper} list={FeaturePageList} edit={FeaturePageEdit} create={FeaturePageCreate}/>
+        <Resource name="movieWatchTopics" options={{label:"영화·이벤트 알림"}} icon={Film} list={MovieWatchList} edit={MovieWatchEdit} create={MovieWatchCreate}/>
+        <Resource name="benefitDepletionReports" options={{label:"특전 소진 제보"}} icon={Ticket} list={BenefitReportList} edit={BenefitReportEdit}/>
+        <Resource name="benefitReceiptConfirmations" options={{label:"특전 수령 인증"}} icon={Ticket} list={BenefitReceiptList} edit={BenefitReceiptEdit}/>
         <Resource
           name="inquiries"
           options={{ label: "문의" }}

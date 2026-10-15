@@ -31,6 +31,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleUserRound,
+  Film,
   HomeIcon,
   Info,
   LogOut,
@@ -111,6 +112,8 @@ type EventItem = {
   price?: number;
   seatRows?: number;
   seatsPerRow?: number;
+  publishAt?: string;
+  hideAt?: string;
 };
 type Post = {
   id: string;
@@ -266,6 +269,7 @@ export default function Home() {
   const [reserveEvent, setReserveEvent] = useState<EventItem | null>(null),
     [activeInquiry, setActiveInquiry] = useState<Inquiry | null>(null),
     [toast, setToast] = useState("");
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
   const isOwner = role === "owner";
   const can = (p: Permission) => isOwner || permissions.includes(p);
   const isAdmin = isOwner || permissions.length > 0;
@@ -282,6 +286,10 @@ export default function Home() {
     );
     return () => clearInterval(id);
   }, [heroImages.length]);
+  useEffect(() => {
+    const id = window.setInterval(() => setScheduleNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
   useEffect(() => {
     if (!firebaseConfigured || !auth || !db) return;
     const firestore = db;
@@ -409,8 +417,14 @@ export default function Home() {
   }, [user, role, permissions, isOwner]);
 
   const openEvents = useMemo(
-    () => events.filter((x) => x.status === "open"),
-    [events],
+    () =>
+      events.filter(
+        (x) =>
+          x.status === "open" &&
+          (!x.publishAt || new Date(x.publishAt).getTime() <= scheduleNow) &&
+          (!x.hideAt || new Date(x.hideAt).getTime() > scheduleNow),
+      ),
+    [events, scheduleNow],
   );
   async function memberAuth(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -809,6 +823,7 @@ export default function Home() {
           <a href="#site-map">둘러보기</a>
           <a href="#characters">캐릭터</a>
           <Link href="/events">행사·예약</Link>
+          <Link href="/special?slug=k-on-movie-2026">케이온 영화</Link>
           <Link href="/shop">상점</Link>
           <details className="nav-dropdown">
             <summary>커뮤니티</summary>
@@ -850,6 +865,10 @@ export default function Home() {
             <Link href="/events">
               <CalendarDays />
               행사·예약
+            </Link>
+            <Link href="/special?slug=k-on-movie-2026">
+              <Film />
+              케이온 영화
             </Link>
             <Link href="/shop">
               <Music2 />
