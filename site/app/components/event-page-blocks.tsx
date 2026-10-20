@@ -14,7 +14,7 @@ export function EventPageBlocks({blocks,scheduleItems,eventStartAt,now}:{blocks:
   if(!blocks.length)return null;
   return <div className="event-content-blocks">{blocks.map(block=>{const embed=block.type==="video"?youtubeEmbed(block.videoUrl||""):"";const style={backgroundColor:block.backgroundColor||undefined,color:block.textColor||undefined} as React.CSSProperties;return <section key={block.id} className={`event-content-block type-${block.type} width-${block.width||"full"} align-${block.alignment||"left"} pad-${block.padding||"normal"}`} style={style}>
     {block.type==="heading"&&<h2>{block.title}</h2>}
-    {block.type==="text"&&<>{block.title&&<h3>{block.title}</h3>}<p>{block.body}</p></>}
+    {(block.type==="text"||block.type==="card")&&<>{block.title&&<h3>{block.title}</h3>}<p>{block.body}</p></>}
     {block.type==="image"&&block.imageUrl&&<img src={block.imageUrl} alt={block.alt||"이벤트 이미지"}/>}
     {block.type==="video"&&(embed?<iframe src={embed} title="이벤트 영상" allowFullScreen/>:block.videoUrl?<video src={block.videoUrl} controls playsInline/>:null)}
     {block.type==="button"&&block.url&&(/^https?:\/\//i.test(block.url)?<a className={block.buttonStyle||"primary"} href={block.url} target="_blank" rel="noreferrer">{block.label||"자세히 보기"}<ArrowRight/></a>:<Link className={block.buttonStyle||"primary"} href={block.url}>{block.label||"자세히 보기"}<ArrowRight/></Link>)}

@@ -286,23 +286,19 @@ function FeaturePageForm(){return <SimpleForm defaultValues={{active:true,showIn
   <TextInput source="menuLabel" label="메뉴 탭 이름" validate={required()} helperText="상단 메뉴와 이벤트 페이지 목록에 표시됩니다."/>
   <TextInput source="slug" label="주소 키" validate={required()} helperText="영문·숫자·하이픈 권장. /special?slug=주소키로 열립니다."/>
   <FormDataConsumer>{({formData})=>formData.slug?<a className="event-page-preview-link" href={`/special?slug=${encodeURIComponent(String(formData.slug))}`} target="_blank" rel="noreferrer">현재 이벤트 페이지 미리보기 ↗</a>:null}</FormDataConsumer>
-  <TextInput source="summary" label="홈·이벤트 목록용 소개" multiline rows={3} fullWidth/>
-  <TextInput source="coverImageUrl" label="대표 이미지 URL" fullWidth/>
-  <TextInput source="themeColor" label="페이지 강조 색상" helperText="예: #e85f7d"/>
-  <TextInput source="videoUrl" label="영상 URL" fullWidth/>
-  <TextInput source="eventId" label="연결할 예약 행사 ID" fullWidth helperText="입력하면 이 페이지에서 행사 신청·예매 버튼을 자동 표시합니다."/>
-  <DateTimeInput source="eventStartAt" label="D-Day 기준 일시" helperText="행사 시작 시각을 입력하면 페이지에 실시간 D-Day가 표시됩니다."/>
-  <DateTimeInput source="publishAt" label="일반 공개 시작" helperText="이 시각 전에는 일반 사용자에게 표시되지 않습니다."/>
-  <DateTimeInput source="hideAt" label="일반 공개 종료" helperText="이 시각부터 메뉴·홈·이벤트 목록과 전용 페이지에서 숨겨집니다."/>
-  <BooleanInput source="active" label="페이지 공개"/>
-  <BooleanInput source="showInMenu" label="상단 메뉴에 표시"/>
-  <BooleanInput source="showOnHome" label="홈 화면에서 홍보"/>
-  <NumberInput source="order" label="메뉴·홍보 순서" min={0}/>
-  <SelectInput source="buttonAlignment" label="버튼 정렬" choices={[{id:"left",name:"왼쪽"},{id:"center",name:"가운데"},{id:"right",name:"오른쪽"}]}/>
-  <ArrayInput source="scheduleItems" label="일정표"><SimpleFormIterator inline><DateTimeInput source="startAt" label="시작"/><DateTimeInput source="endAt" label="종료"/><TextInput source="title" label="일정명" validate={required()}/><TextInput source="description" label="설명"/><TextInput source="place" label="장소"/></SimpleFormIterator></ArrayInput>
-  <ArrayInput source="actionButtons" label="링크 버튼"><SimpleFormIterator inline><TextInput source="label" label="버튼 문구" validate={required()}/><TextInput source="url" label="링크" validate={required()}/><SelectInput source="kind" label="용도" choices={[{id:"recruit",name:"모집"},{id:"survey",name:"수요조사"},{id:"apply",name:"신청"},{id:"link",name:"일반 링크"}]}/><SelectInput source="placement" label="위치" choices={[{id:"hero",name:"상단 배너"},{id:"content",name:"본문 아래"}]}/><SelectInput source="style" label="모양" choices={[{id:"primary",name:"강조"},{id:"outline",name:"외곽선"}]}/></SimpleFormIterator></ArrayInput>
   <EventPageBuilder/>
-  <RichTextInput label="페이지 본문"/>
+  <details className="event-page-advanced"><summary>페이지 공개·대표 이미지 설정</summary><div>
+    <TextInput source="summary" label="홈·이벤트 목록용 소개" multiline rows={3} fullWidth/>
+    <TextInput source="coverImageUrl" label="상단 대표 이미지 URL" fullWidth/>
+    <TextInput source="themeColor" label="페이지 강조 색상" helperText="예: #e85f7d"/>
+    <TextInput source="eventId" label="연결할 예약 행사 ID" fullWidth helperText="입력하면 상단에 행사 신청·예매 버튼을 표시합니다."/>
+    <DateTimeInput source="eventStartAt" label="기본 D-Day 기준 일시"/>
+    <DateTimeInput source="publishAt" label="일반 공개 시작"/>
+    <DateTimeInput source="hideAt" label="일반 공개 종료"/>
+    <BooleanInput source="active" label="페이지 공개"/><BooleanInput source="showInMenu" label="상단 메뉴에 표시"/><BooleanInput source="showOnHome" label="홈 화면에서 홍보"/><NumberInput source="order" label="메뉴·홍보 순서" min={0}/>
+  </div></details>
+  <details className="event-page-advanced"><summary>일정 데이터 입력</summary><div><p>캔버스에 일정표 블록을 놓으면 아래 일정이 그 위치에 나타납니다.</p><ArrayInput source="scheduleItems" label="일정표"><SimpleFormIterator inline><DateTimeInput source="startAt" label="시작"/><DateTimeInput source="endAt" label="종료"/><TextInput source="title" label="일정명" validate={required()}/><TextInput source="description" label="설명"/><TextInput source="place" label="장소"/></SimpleFormIterator></ArrayInput></div></details>
+  <details className="event-page-advanced"><summary>이전 방식 콘텐츠 호환 설정</summary><div><p>블록이 없는 기존 페이지에서만 사용됩니다.</p><TextInput source="videoUrl" label="영상 URL" fullWidth/><SelectInput source="buttonAlignment" label="버튼 정렬" choices={[{id:"left",name:"왼쪽"},{id:"center",name:"가운데"},{id:"right",name:"오른쪽"}]}/><ArrayInput source="actionButtons" label="기존 링크 버튼"><SimpleFormIterator inline><TextInput source="label" label="버튼 문구"/><TextInput source="url" label="링크"/><SelectInput source="placement" label="위치" choices={[{id:"hero",name:"상단 배너"},{id:"content",name:"본문 아래"}]}/></SimpleFormIterator></ArrayInput><RichTextInput label="기존 페이지 본문"/></div></details>
 </SimpleForm>}
 function FeaturePageCreate(){return <Create><FeaturePageForm/></Create>}
 function FeaturePageEdit(){return <Edit><FeaturePageForm/></Edit>}
