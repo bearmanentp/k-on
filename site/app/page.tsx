@@ -27,6 +27,7 @@ import {
 import { getToken } from "firebase/messaging";
 import {
   Bell,
+  ArrowRight,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -172,6 +173,21 @@ type ManualAd = {
   active: boolean;
   createdAt: string;
 };
+type FeaturePagePromo = {
+  id: string;
+  slug: string;
+  title: string;
+  menuLabel?: string;
+  summary?: string;
+  coverImageUrl?: string;
+  eventStartAt?: string;
+  publishAt?: string;
+  hideAt?: string;
+  active?: boolean;
+  showInMenu?: boolean;
+  showOnHome?: boolean;
+  order?: number;
+};
 type CharacterImage = { name: string; url: string; source?: string };
 type SiteSettings = {
   siteName: string;
@@ -251,7 +267,8 @@ export default function Home() {
     [reservations, setReservations] = useState<Reservation[]>([]),
     [adminNotices, setAdminNotices] = useState<AdminNotice[]>([]),
     [messages, setMessages] = useState<AccountMessage[]>([]),
-    [ads, setAds] = useState<ManualAd[]>([]);
+    [ads, setAds] = useState<ManualAd[]>([]),
+    [featurePages, setFeaturePages] = useState<FeaturePagePromo[]>([]);
   const [user, setUser] = useState<User | null>(null),
     [role, setRole] = useState(""),
     [permissions, setPermissions] = useState<Permission[]>([]),
@@ -337,6 +354,13 @@ export default function Home() {
             .filter((ad) => ad.active),
         ),
     );
+    const ufp = onSnapshot(collection(db, "featurePages"), (s) =>
+      setFeaturePages(
+        s.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as FeaturePagePromo)
+          .sort((a, b) => Number(a.order || 0) - Number(b.order || 0)),
+      ),
+    );
     return () => {
       ua();
       us();
@@ -344,6 +368,7 @@ export default function Home() {
       un();
       uw();
       uad();
+      ufp();
     };
   }, []);
   useEffect(() => {
@@ -426,6 +451,19 @@ export default function Home() {
       ),
     [events, scheduleNow],
   );
+  const visibleFeaturePages = useMemo(
+    () =>
+      featurePages.filter(
+        (page) =>
+          page.active !== false &&
+          (!page.publishAt || new Date(page.publishAt).getTime() <= scheduleNow) &&
+          (!page.hideAt || new Date(page.hideAt).getTime() > scheduleNow),
+      ),
+    [featurePages, scheduleNow],
+  );
+  const featureMenuPages = visibleFeaturePages.filter((page) => page.showInMenu !== false);
+  const homeFeaturePages = visibleFeaturePages.filter((page) => page.showOnHome === true);
+  const hasMovieFeaturePage = featureMenuPages.some((page) => page.slug === "k-on-movie-2026");
   async function memberAuth(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!auth) return setToast("Firebase 연결 후 로그인할 수 있습니다.");
@@ -823,7 +861,8 @@ export default function Home() {
           <a href="#site-map">둘러보기</a>
           <a href="#characters">캐릭터</a>
           <Link href="/events">행사·예약</Link>
-          <Link href="/special?slug=k-on-movie-2026">케이온 영화</Link>
+          {!hasMovieFeaturePage&&<Link href="/special?slug=k-on-movie-2026">케이온 영화</Link>}
+          {featureMenuPages.map(page=><Link href={`/special?slug=${encodeURIComponent(page.slug)}`} key={page.id}>{page.menuLabel||page.title}</Link>)}
           <Link href="/shop">상점</Link>
           <details className="nav-dropdown">
             <summary>커뮤니티</summary>
@@ -866,10 +905,11 @@ export default function Home() {
               <CalendarDays />
               행사·예약
             </Link>
-            <Link href="/special?slug=k-on-movie-2026">
+            {!hasMovieFeaturePage&&<Link href="/special?slug=k-on-movie-2026">
               <Film />
               케이온 영화
-            </Link>
+            </Link>}
+            {featureMenuPages.map(page=><Link href={`/special?slug=${encodeURIComponent(page.slug)}`} key={page.id}><Sparkles/>{page.menuLabel||page.title}</Link>)}
             <Link href="/shop">
               <Music2 />
               상점
@@ -1087,6 +1127,7 @@ export default function Home() {
         </div>
       </section>
       <ManualAdSlot ads={ads} slot="after-community" />
+      {homeFeaturePages.length>0&&<section className="event-promo-section"><div className="section-head"><div><small>NOW PROMOTING</small><h2>진행 중인 이벤트</h2></div><p>지금 공개 중인 특별 이벤트 페이지를 확인해 보세요.</p></div><div className="event-promo-grid">{homeFeaturePages.map(page=><Link className="event-promo-card" href={`/special?slug=${encodeURIComponent(page.slug)}`} key={page.id} style={page.coverImageUrl?{backgroundImage:`linear-gradient(180deg,#291a2020,#291a20e8),url(${page.coverImageUrl})`}:undefined}><small>{page.eventStartAt?`D-${Math.max(0,Math.ceil((new Date(page.eventStartAt).getTime()-scheduleNow)/86400000))}`:"SPECIAL EVENT"}</small><h3>{page.title}</h3><p>{page.summary}</p><span>이벤트 페이지 보기<ArrowRight/></span></Link>)}</div></section>}
       <section id="events" className="section">
         <div className="section-head">
           <div>

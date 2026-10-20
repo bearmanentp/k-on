@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { collection, doc, getDoc, getDocs, onSnapshot, setDoc, writeBatch } from "firebase/firestore";
 import {
   Admin,
+  ArrayInput,
   BooleanField,
   BooleanInput,
   Create,
@@ -22,6 +23,7 @@ import {
   Resource,
   SelectInput,
   SimpleForm,
+  SimpleFormIterator,
   TextField,
   TextInput,
   required,
@@ -277,8 +279,29 @@ function PopupList(){return <List sort={{field:"createdAt",order:"DESC"}}><Datag
 function PopupForm(){return <SimpleForm defaultValues={{active:true,dismissible:true}}><TextInput source="title" label="팝업 제목" validate={required()} fullWidth/><TextInput source="summary" label="짧은 안내" multiline rows={3} fullWidth/><TextInput source="imageUrl" label="이미지 URL" fullWidth/><TextInput source="videoUrl" label="영상 URL" fullWidth/><TextInput source="linkUrl" label="이동 링크" fullWidth/><TextInput source="linkLabel" label="링크 버튼 문구"/><DateTimeInput source="publishAt" label="공개 시작"/><DateTimeInput source="hideAt" label="공개 종료"/><BooleanInput source="active" label="팝업 사용"/><BooleanInput source="dismissible" label="사용자 닫기 허용"/><RichTextInput label="팝업 내용"/></SimpleForm>}
 function PopupCreate(){return <Create><PopupForm/></Create>}
 function PopupEdit(){return <Edit><PopupForm/></Edit>}
-function FeaturePageList(){return <List sort={{field:"order",order:"ASC"}}><Datagrid rowClick="edit"><BooleanField source="active" label="공개"/><BooleanField source="showInMenu" label="메뉴"/><TextField source="menuLabel" label="메뉴명"/><TextField source="title" label="페이지 제목"/><TextField source="slug" label="주소 키"/><DateField source="publishAt" label="공개 시작" showTime/><EditButton/><DeleteButton/></Datagrid></List>}
-function FeaturePageForm(){return <SimpleForm defaultValues={{active:true,showInMenu:true,order:0}}><TextInput source="title" label="페이지 제목" validate={required()} fullWidth/><TextInput source="menuLabel" label="메뉴 탭 이름" validate={required()}/><TextInput source="slug" label="주소 키" validate={required()} helperText="영문·숫자·하이픈 권장. /special?slug=주소키로 열립니다."/><TextInput source="summary" label="요약" multiline rows={3} fullWidth/><TextInput source="coverImageUrl" label="대표 이미지 URL" fullWidth/><TextInput source="videoUrl" label="영상 URL" fullWidth/><TextInput source="eventId" label="연결할 행사 ID" helperText="입력하면 행사 신청·예매 버튼을 표시합니다."/><DateTimeInput source="publishAt" label="페이지 공개 시작"/><DateTimeInput source="hideAt" label="페이지 공개 종료"/><BooleanInput source="active" label="페이지 공개"/><BooleanInput source="showInMenu" label="상단 메뉴에 표시"/><NumberInput source="order" label="메뉴 순서" min={0}/><RichTextInput label="페이지 본문"/></SimpleForm>}
+function FeaturePageList(){return <List sort={{field:"order",order:"ASC"}}><Datagrid rowClick="edit"><BooleanField source="active" label="공개"/><BooleanField source="showInMenu" label="메뉴"/><BooleanField source="showOnHome" label="홈 홍보"/><TextField source="menuLabel" label="메뉴명"/><TextField source="title" label="이벤트 페이지 제목"/><TextField source="slug" label="주소 키"/><DateField source="publishAt" label="공개 시작" showTime/><DateField source="hideAt" label="공개 종료" showTime/><EditButton/><DeleteButton/></Datagrid></List>}
+function FeaturePageForm(){return <SimpleForm defaultValues={{active:true,showInMenu:true,showOnHome:true,order:0,buttonAlignment:"left",scheduleItems:[],actionButtons:[]}}>
+  <TextInput source="title" label="이벤트 페이지 제목" validate={required()} fullWidth/>
+  <TextInput source="menuLabel" label="메뉴 탭 이름" validate={required()} helperText="상단 메뉴와 이벤트 페이지 목록에 표시됩니다."/>
+  <TextInput source="slug" label="주소 키" validate={required()} helperText="영문·숫자·하이픈 권장. /special?slug=주소키로 열립니다."/>
+  <FormDataConsumer>{({formData})=>formData.slug?<a className="event-page-preview-link" href={`/special?slug=${encodeURIComponent(String(formData.slug))}`} target="_blank" rel="noreferrer">현재 이벤트 페이지 미리보기 ↗</a>:null}</FormDataConsumer>
+  <TextInput source="summary" label="홈·이벤트 목록용 소개" multiline rows={3} fullWidth/>
+  <TextInput source="coverImageUrl" label="대표 이미지 URL" fullWidth/>
+  <TextInput source="themeColor" label="페이지 강조 색상" helperText="예: #e85f7d"/>
+  <TextInput source="videoUrl" label="영상 URL" fullWidth/>
+  <TextInput source="eventId" label="연결할 예약 행사 ID" fullWidth helperText="입력하면 이 페이지에서 행사 신청·예매 버튼을 자동 표시합니다."/>
+  <DateTimeInput source="eventStartAt" label="D-Day 기준 일시" helperText="행사 시작 시각을 입력하면 페이지에 실시간 D-Day가 표시됩니다."/>
+  <DateTimeInput source="publishAt" label="일반 공개 시작" helperText="이 시각 전에는 일반 사용자에게 표시되지 않습니다."/>
+  <DateTimeInput source="hideAt" label="일반 공개 종료" helperText="이 시각부터 메뉴·홈·이벤트 목록과 전용 페이지에서 숨겨집니다."/>
+  <BooleanInput source="active" label="페이지 공개"/>
+  <BooleanInput source="showInMenu" label="상단 메뉴에 표시"/>
+  <BooleanInput source="showOnHome" label="홈 화면에서 홍보"/>
+  <NumberInput source="order" label="메뉴·홍보 순서" min={0}/>
+  <SelectInput source="buttonAlignment" label="버튼 정렬" choices={[{id:"left",name:"왼쪽"},{id:"center",name:"가운데"},{id:"right",name:"오른쪽"}]}/>
+  <ArrayInput source="scheduleItems" label="일정표"><SimpleFormIterator inline><DateTimeInput source="startAt" label="시작"/><DateTimeInput source="endAt" label="종료"/><TextInput source="title" label="일정명" validate={required()}/><TextInput source="description" label="설명"/><TextInput source="place" label="장소"/></SimpleFormIterator></ArrayInput>
+  <ArrayInput source="actionButtons" label="링크 버튼"><SimpleFormIterator inline><TextInput source="label" label="버튼 문구" validate={required()}/><TextInput source="url" label="링크" validate={required()}/><SelectInput source="kind" label="용도" choices={[{id:"recruit",name:"모집"},{id:"survey",name:"수요조사"},{id:"apply",name:"신청"},{id:"link",name:"일반 링크"}]}/><SelectInput source="placement" label="위치" choices={[{id:"hero",name:"상단 배너"},{id:"content",name:"본문 아래"}]}/><SelectInput source="style" label="모양" choices={[{id:"primary",name:"강조"},{id:"outline",name:"외곽선"}]}/></SimpleFormIterator></ArrayInput>
+  <RichTextInput label="페이지 본문"/>
+</SimpleForm>}
 function FeaturePageCreate(){return <Create><FeaturePageForm/></Create>}
 function FeaturePageEdit(){return <Edit><FeaturePageForm/></Edit>}
 function MovieWatchList(){return <List sort={{field:"title",order:"ASC"}}><Datagrid rowClick="edit"><BooleanField source="active" label="감시"/><TextField source="title" label="알림 주제"/><TextField source="movieCode" label="롯데 영화 코드"/><NumberField source="monitorDays" label="확인 일수"/><EditButton/><DeleteButton/></Datagrid></List>}
@@ -881,7 +904,7 @@ export default function AdminApp() {
           create={EventCreate}
         />
         <Resource name="sitePopups" options={{label:"사이트 팝업"}} icon={Megaphone} list={PopupList} edit={PopupEdit} create={PopupCreate}/>
-        <Resource name="featurePages" options={{label:"중요 행사 페이지"}} icon={Newspaper} list={FeaturePageList} edit={FeaturePageEdit} create={FeaturePageCreate}/>
+        <Resource name="featurePages" options={{label:"이벤트 페이지"}} icon={CalendarDays} list={FeaturePageList} edit={FeaturePageEdit} create={FeaturePageCreate}/>
         <Resource name="movieWatchTopics" options={{label:"영화·이벤트 알림"}} icon={Film} list={MovieWatchList} edit={MovieWatchEdit} create={MovieWatchCreate}/>
         <Resource name="benefitDepletionReports" options={{label:"특전 소진 제보"}} icon={Ticket} list={BenefitReportList} edit={BenefitReportEdit}/>
         <Resource name="benefitReceiptConfirmations" options={{label:"특전 수령 인증"}} icon={Ticket} list={BenefitReceiptList} edit={BenefitReceiptEdit}/>
