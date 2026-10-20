@@ -5,12 +5,18 @@ service cloud.firestore {
     function has(permission) {
       return signedIn() && (
         request.auth.token.role == 'owner'
+        || request.auth.token.role == 'deputy'
         || (request.auth.token.permissions is list && permission in request.auth.token.permissions)
         || (
           request.auth.token.email is string
           && get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.active == true
-          && get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.permissions is list
-          && permission in get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.permissions
+          && (
+            get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.role == 'deputy'
+            || (
+              get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.permissions is list
+              && permission in get(/databases/$(database)/documents/adminDirectory/$(request.auth.token.email)).data.permissions
+            )
+          )
         )
       );
     }

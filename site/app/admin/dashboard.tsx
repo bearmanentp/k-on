@@ -23,12 +23,21 @@ const columns=helper.columns([
 
 export function AdminDashboard(){
   const [inquiries,setInquiries]=useState<InquiryRow[]>([]),[storageAlert,setStorageAlert]=useState<StorageAlert|null>(null);
-  const {permissions}=usePermissions();
-  useEffect(()=>{if(!db)return;const recentQuery=query(collection(db,"inquiries"),orderBy("createdAt","desc"),limit(6));return onSnapshot(recentQuery,snapshot=>setInquiries(snapshot.docs.map(item=>({id:item.id,...item.data()} as InquiryRow))));},[]);
+  const {permissions=[]}=usePermissions<string[]>();
+  const canViewInquiries=permissions.some(permission=>["owner","deputy","applications"].includes(permission));
+  useEffect(()=>{
+    if(!db||!canViewInquiries)return;
+    const recentQuery=query(collection(db,"inquiries"),orderBy("createdAt","desc"),limit(6));
+    return onSnapshot(
+      recentQuery,
+      snapshot=>setInquiries(snapshot.docs.map(item=>({id:item.id,...item.data()} as InquiryRow))),
+      ()=>setInquiries([]),
+    );
+  },[canViewInquiries]);
   useEffect(()=>{if(!db)return;return onSnapshot(doc(db,"adminAlerts","storage-capacity"),snapshot=>setStorageAlert(snapshot.exists()?snapshot.data() as StorageAlert:null));},[]);
   const data=useMemo(()=>inquiries,[inquiries]);
   const table=useTable({features,columns,data,getRowId:row=>row.id});
-  return <div className="ra-dashboard"><div className="dashboard-welcome"><small>K-ON! CONTROL CENTER</small><h1>관리 시스템</h1><p>왼쪽 메뉴에서 게시판, 행사, 문의와 예약 데이터를 통합 관리하세요.</p></div>{storageAlert&&storageAlert.status!=="normal"&&<section className={`storage-alert ${storageAlert.status}`}><b>Firebase 이미지 저장공간 경고</b><strong>{storageAlert.status==="critical"?"위험":"주의"}</strong><p>{storageAlert.message}</p><small>{formatBytes(storageAlert.usedBytes)} 사용 · 경고 기준 {formatBytes(storageAlert.warningBytes)} · {new Date(storageAlert.updatedAt).toLocaleString("ko-KR")}</small></section>}{(permissions.includes("owner")||permissions.includes("points"))&&<PointManager/>}<PermissionManager/><section className="dashboard-latest"><h2>최근 문의</h2><div className="tanstack-table"><table><thead>{table.getHeaderGroups().map(group=><tr key={group.id}>{group.headers.map(header=><th key={header.id}>{header.isPlaceholder?null:flexRender(header.column.columnDef.header,header.getContext())}</th>)}</tr>)}</thead><tbody>{table.getRowModel().rows.map(row=><tr key={row.id}>{row.getAllCells().map(cell=><td key={cell.id}>{flexRender(cell.column.columnDef.cell,cell.getContext())}</td>)}</tr>)}</tbody></table></div></section><EventFormBuilder/></div>;
+  return <div className="ra-dashboard"><div className="dashboard-welcome"><small>K-ON! CONTROL CENTER</small><h1>관리 시스템</h1><p>왼쪽 메뉴에서 게시판, 행사, 문의와 예약 데이터를 통합 관리하세요.</p></div>{storageAlert&&storageAlert.status!=="normal"&&<section className={`storage-alert ${storageAlert.status}`}><b>Firebase 이미지 저장공간 경고</b><strong>{storageAlert.status==="critical"?"위험":"주의"}</strong><p>{storageAlert.message}</p><small>{formatBytes(storageAlert.usedBytes)} 사용 · 경고 기준 {formatBytes(storageAlert.warningBytes)} · {new Date(storageAlert.updatedAt).toLocaleString("ko-KR")}</small></section>}{(permissions.includes("owner")||permissions.includes("deputy")||permissions.includes("points"))&&<PointManager/>}<PermissionManager/>{canViewInquiries&&<section className="dashboard-latest"><h2>최근 문의</h2><div className="tanstack-table"><table><thead>{table.getHeaderGroups().map(group=><tr key={group.id}>{group.headers.map(header=><th key={header.id}>{header.isPlaceholder?null:flexRender(header.column.columnDef.header,header.getContext())}</th>)}</tr>)}</thead><tbody>{table.getRowModel().rows.map(row=><tr key={row.id}>{row.getAllCells().map(cell=><td key={cell.id}>{flexRender(cell.column.columnDef.cell,cell.getContext())}</td>)}</tr>)}</tbody></table></div></section>}<EventFormBuilder/></div>;
 }
 
 function formatBytes(value:number){if(!value)return "0 B";const units=["B","KB","MB","GB","TB"];const index=Math.min(Math.floor(Math.log(value)/Math.log(1024)),units.length-1);return `${(value/1024**index).toFixed(index?1:0)} ${units[index]}`;}

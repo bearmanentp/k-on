@@ -58,6 +58,7 @@ import {
 import { RichTextInput } from "./rich-text-input";
 import { AdminDashboard } from "./dashboard";
 import { SeatLayoutInput } from "./seat-layout-input";
+import { EventPageBuilder } from "./event-page-builder";
 import { db } from "@/lib/firebase";
 import { DEFAULT_POINT_SETTINGS, type PointSettings } from "@/lib/points";
 import { DEFAULT_CHARACTER_IMAGE_LINES, DEFAULT_CHARACTER_IMAGES, DEFAULT_K_ON_LOGO } from "@/lib/site-defaults";
@@ -280,7 +281,7 @@ function PopupForm(){return <SimpleForm defaultValues={{active:true,dismissible:
 function PopupCreate(){return <Create><PopupForm/></Create>}
 function PopupEdit(){return <Edit><PopupForm/></Edit>}
 function FeaturePageList(){return <List sort={{field:"order",order:"ASC"}}><Datagrid rowClick="edit"><BooleanField source="active" label="공개"/><BooleanField source="showInMenu" label="메뉴"/><BooleanField source="showOnHome" label="홈 홍보"/><TextField source="menuLabel" label="메뉴명"/><TextField source="title" label="이벤트 페이지 제목"/><TextField source="slug" label="주소 키"/><DateField source="publishAt" label="공개 시작" showTime/><DateField source="hideAt" label="공개 종료" showTime/><EditButton/><DeleteButton/></Datagrid></List>}
-function FeaturePageForm(){return <SimpleForm defaultValues={{active:true,showInMenu:true,showOnHome:true,order:0,buttonAlignment:"left",scheduleItems:[],actionButtons:[]}}>
+function FeaturePageForm(){return <SimpleForm defaultValues={{active:true,showInMenu:true,showOnHome:true,order:0,buttonAlignment:"left",scheduleItems:[],actionButtons:[],contentBlocks:[]}}>
   <TextInput source="title" label="이벤트 페이지 제목" validate={required()} fullWidth/>
   <TextInput source="menuLabel" label="메뉴 탭 이름" validate={required()} helperText="상단 메뉴와 이벤트 페이지 목록에 표시됩니다."/>
   <TextInput source="slug" label="주소 키" validate={required()} helperText="영문·숫자·하이픈 권장. /special?slug=주소키로 열립니다."/>
@@ -300,6 +301,7 @@ function FeaturePageForm(){return <SimpleForm defaultValues={{active:true,showIn
   <SelectInput source="buttonAlignment" label="버튼 정렬" choices={[{id:"left",name:"왼쪽"},{id:"center",name:"가운데"},{id:"right",name:"오른쪽"}]}/>
   <ArrayInput source="scheduleItems" label="일정표"><SimpleFormIterator inline><DateTimeInput source="startAt" label="시작"/><DateTimeInput source="endAt" label="종료"/><TextInput source="title" label="일정명" validate={required()}/><TextInput source="description" label="설명"/><TextInput source="place" label="장소"/></SimpleFormIterator></ArrayInput>
   <ArrayInput source="actionButtons" label="링크 버튼"><SimpleFormIterator inline><TextInput source="label" label="버튼 문구" validate={required()}/><TextInput source="url" label="링크" validate={required()}/><SelectInput source="kind" label="용도" choices={[{id:"recruit",name:"모집"},{id:"survey",name:"수요조사"},{id:"apply",name:"신청"},{id:"link",name:"일반 링크"}]}/><SelectInput source="placement" label="위치" choices={[{id:"hero",name:"상단 배너"},{id:"content",name:"본문 아래"}]}/><SelectInput source="style" label="모양" choices={[{id:"primary",name:"강조"},{id:"outline",name:"외곽선"}]}/></SimpleFormIterator></ArrayInput>
+  <EventPageBuilder/>
   <RichTextInput label="페이지 본문"/>
 </SimpleForm>}
 function FeaturePageCreate(){return <Create><FeaturePageForm/></Create>}
