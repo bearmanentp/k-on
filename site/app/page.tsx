@@ -77,6 +77,7 @@ import {
 import { reserveEventInFirestore } from "@/lib/reservations";
 import { readAdminAccess } from "@/lib/admin-access";
 import { DEFAULT_CHARACTER_IMAGES, DEFAULT_K_ON_LOGO } from "@/lib/site-defaults";
+import { mergeBuiltInFeaturePages, MOVIE_FEATURE_SLUG } from "@/lib/feature-page-defaults";
 
 type Permission =
   | "design"
@@ -268,7 +269,7 @@ export default function Home() {
     [adminNotices, setAdminNotices] = useState<AdminNotice[]>([]),
     [messages, setMessages] = useState<AccountMessage[]>([]),
     [ads, setAds] = useState<ManualAd[]>([]),
-    [featurePages, setFeaturePages] = useState<FeaturePagePromo[]>([]);
+    [featurePages, setFeaturePages] = useState<FeaturePagePromo[]>(()=>mergeBuiltInFeaturePages([]) as FeaturePagePromo[]);
   const [user, setUser] = useState<User | null>(null),
     [role, setRole] = useState(""),
     [permissions, setPermissions] = useState<Permission[]>([]),
@@ -355,11 +356,10 @@ export default function Home() {
         ),
     );
     const ufp = onSnapshot(collection(db, "featurePages"), (s) =>
-      setFeaturePages(
-        s.docs
-          .map((d) => ({ id: d.id, ...d.data() }) as FeaturePagePromo)
-          .sort((a, b) => Number(a.order || 0) - Number(b.order || 0)),
-      ),
+      setFeaturePages(mergeBuiltInFeaturePages(
+        s.docs.map((d) => ({ id: d.id, ...d.data() }) as FeaturePagePromo),
+      ) as FeaturePagePromo[]),
+      () => {},
     );
     return () => {
       ua();
@@ -463,7 +463,6 @@ export default function Home() {
   );
   const featureMenuPages = visibleFeaturePages.filter((page) => page.showInMenu !== false);
   const homeFeaturePages = visibleFeaturePages.filter((page) => page.showOnHome === true);
-  const hasMovieFeaturePage = featureMenuPages.some((page) => page.slug === "k-on-movie-2026");
   async function memberAuth(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!auth) return setToast("Firebase 연결 후 로그인할 수 있습니다.");
@@ -861,7 +860,6 @@ export default function Home() {
           <a href="#site-map">둘러보기</a>
           <a href="#characters">캐릭터</a>
           <Link href="/events">행사·예약</Link>
-          {!hasMovieFeaturePage&&<Link href="/special?slug=k-on-movie-2026">케이온 영화</Link>}
           {featureMenuPages.map(page=><Link href={`/special?slug=${encodeURIComponent(page.slug)}`} key={page.id}>{page.menuLabel||page.title}</Link>)}
           <Link href="/shop">상점</Link>
           <details className="nav-dropdown">
@@ -905,11 +903,7 @@ export default function Home() {
               <CalendarDays />
               행사·예약
             </Link>
-            {!hasMovieFeaturePage&&<Link href="/special?slug=k-on-movie-2026">
-              <Film />
-              케이온 영화
-            </Link>}
-            {featureMenuPages.map(page=><Link href={`/special?slug=${encodeURIComponent(page.slug)}`} key={page.id}><Sparkles/>{page.menuLabel||page.title}</Link>)}
+            {featureMenuPages.map(page=>{const Icon=page.slug===MOVIE_FEATURE_SLUG?Film:Sparkles;return <Link href={`/special?slug=${encodeURIComponent(page.slug)}`} key={page.id}><Icon/>{page.menuLabel||page.title}</Link>})}
             <Link href="/shop">
               <Music2 />
               상점

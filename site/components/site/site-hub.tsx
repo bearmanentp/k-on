@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, BellRing, CalendarDays, Film, MessageSquareText, Newspaper, Settings2 } from "lucide-react";
+import { ArrowUpRight, BellRing, CalendarDays, CakeSlice, Film, MessageSquareText, Newspaper, Settings2 } from "lucide-react";
 
 type SiteHubProps = {
   isAdmin?: boolean;
@@ -14,6 +14,7 @@ export function SiteHub({ isAdmin = false, unreadCount = 0, points = 0 }: SiteHu
   const cards = [
     { eyebrow: "COMMUNITY", title: "커뮤니티", description: "소식·공지·문의 게시판을 한곳에서 확인하세요.", href: "/boards#news", icon: Newspaper },
     { eyebrow: "EVENT", title: "행사·예약", description: "진행 중인 팬 행사와 신청폼을 살펴보세요.", href: "/events", icon: CalendarDays },
+    { eyebrow: "YUI BIRTHDAY", title: "유이 생일 카페", description: "2026 부산 생일 카페의 일정, 방문 특전과 참여 모집을 확인하세요.", href: "/special?slug=yui-birthday-cafe-busan-2026", icon: CakeSlice },
     { eyebrow: "MOVIE LIVE", title: "케이온 영화", description: "롯데시네마 예매 오픈·좌석 소진율과 주차별 특전 현황을 확인하세요.", href: "/special?slug=k-on-movie-2026", icon: Film },
     { eyebrow: "MEMBER", title: "회원 공간", description: unreadCount ? `새 알림 ${unreadCount}개 · 보유 포인트 ${points.toLocaleString()}P` : `내 문의·예약과 ${points.toLocaleString()}P 포인트를 확인하세요.`, href: "/boards#inquiries", icon: unreadCount ? BellRing : MessageSquareText },
     ...(isAdmin ? [{ eyebrow: "CONTROL", title: "관리 시스템", description: "콘텐츠, 행사, 권한을 역할별로 관리하세요.", href: "/admin", icon: Settings2 }] : []),

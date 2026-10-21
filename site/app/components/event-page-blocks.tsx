@@ -17,7 +17,7 @@ export function EventPageBlocks({blocks,scheduleItems,eventStartAt,now}:{blocks:
     {(block.type==="text"||block.type==="card")&&<>{block.title&&<h3>{block.title}</h3>}<p>{block.body}</p></>}
     {block.type==="image"&&block.imageUrl&&<img src={block.imageUrl} alt={block.alt||"이벤트 이미지"}/>}
     {block.type==="video"&&(embed?<iframe src={embed} title="이벤트 영상" allowFullScreen/>:block.videoUrl?<video src={block.videoUrl} controls playsInline/>:null)}
-    {block.type==="button"&&block.url&&(/^https?:\/\//i.test(block.url)?<a className={block.buttonStyle||"primary"} href={block.url} target="_blank" rel="noreferrer">{block.label||"자세히 보기"}<ArrowRight/></a>:<Link className={block.buttonStyle||"primary"} href={block.url}>{block.label||"자세히 보기"}<ArrowRight/></Link>)}
+    {block.type==="button"&&block.url&&(/^[a-z][a-z0-9+.-]*:/i.test(block.url)?<a className={block.buttonStyle||"primary"} href={block.url} target={/^https?:\/\//i.test(block.url)?"_blank":undefined} rel={/^https?:\/\//i.test(block.url)?"noreferrer":undefined}>{block.label||"자세히 보기"}<ArrowRight/></a>:<Link className={block.buttonStyle||"primary"} href={block.url}>{block.label||"자세히 보기"}<ArrowRight/></Link>)}
     {block.type==="countdown"&&(block.targetAt||eventStartAt)&&<Countdown target={block.targetAt||eventStartAt||""} now={now}/>}
     {block.type==="schedule"&&scheduleItems.length>0&&<Schedule items={scheduleItems}/>}
     {block.type==="divider"&&<hr/>}

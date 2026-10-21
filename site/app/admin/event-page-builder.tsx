@@ -6,7 +6,8 @@ import { useFormContext } from "react-hook-form";
 import { DragDropProvider } from "@dnd-kit/react";
 import { useSortable } from "@dnd-kit/react/sortable";
 import { move } from "@dnd-kit/helpers";
-import { CalendarClock, Columns2, Columns3, Copy, GripVertical, Heading, Image as ImageIcon, Link2, Minus, Palette, Plus, Space, Square, Text, Timer, Trash2, Video } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarClock, Columns2, Columns3, Copy, ExternalLink, GripVertical, Heading, Image as ImageIcon, LayoutTemplate, Link2, Minus, Palette, Plus, Space, Square, Text, Timer, Trash2, Video } from "lucide-react";
+import { YUI_BIRTHDAY_FEATURE_PAGE } from "@/lib/feature-page-defaults";
 
 export type EventPageBlock={
   id:string;
@@ -28,13 +29,14 @@ function Editable({value,placeholder,className,onChange}:{value?:string;placehol
   return <div className={className} contentEditable suppressContentEditableWarning data-placeholder={placeholder} onBlur={event=>onChange(event.currentTarget.textContent||"")}>{value}</div>;
 }
 
-function CanvasBlock({block,index,selected,onSelect,onChange,onRemove,onDuplicate,onInsert}:{block:EventPageBlock;index:number;selected:boolean;onSelect:()=>void;onChange:(next:EventPageBlock)=>void;onRemove:()=>void;onDuplicate:()=>void;onInsert:()=>void}){
+function CanvasBlock({block,index,selected,onSelect,onChange,onRemove,onDuplicate,onInsert,onMoveUp,onMoveDown}:{block:EventPageBlock;index:number;selected:boolean;onSelect:()=>void;onChange:(next:EventPageBlock)=>void;onRemove:()=>void;onDuplicate:()=>void;onInsert:()=>void;onMoveUp?:()=>void;onMoveDown?:()=>void}){
   const {ref,handleRef,isDragging}=useSortable({id:block.id,index});
   const set=(key:keyof EventPageBlock,value:string)=>onChange({...block,[key]:value});
   return <article ref={ref} onClick={event=>{event.stopPropagation();onSelect();}} className={`event-canvas-block type-${block.type} width-${block.width||"full"} align-${block.alignment||"left"} pad-${block.padding||"normal"} ${selected?"selected":""} ${isDragging?"dragging":""}`} style={{backgroundColor:block.backgroundColor||undefined,color:block.textColor||undefined}}>
     <div className="event-canvas-controls">
       <button ref={handleRef} type="button" title="끌어서 이동"><GripVertical/></button><span>{blockLabel(block.type)}</span>
       <div className="event-width-switch" aria-label="블록 너비"><button type="button" className={block.width==="third"?"active":""} onClick={()=>set("width","third")}>⅓</button><button type="button" className={block.width==="half"?"active":""} onClick={()=>set("width","half")}>½</button><button type="button" className={(block.width||"full")==="full"?"active":""} onClick={()=>set("width","full")}>전체</button></div>
+      <button type="button" title="위로 이동" disabled={!onMoveUp} onClick={onMoveUp}><ArrowUp/></button><button type="button" title="아래로 이동" disabled={!onMoveDown} onClick={onMoveDown}><ArrowDown/></button>
       <button type="button" title="복제" onClick={onDuplicate}><Copy/></button><button type="button" title="아래에 텍스트 추가" onClick={onInsert}><Plus/></button><button type="button" title="삭제" onClick={onRemove}><Trash2/></button>
     </div>
     <div className="event-canvas-content">
@@ -66,20 +68,22 @@ function Inspector({block,onChange}:{block:EventPageBlock;onChange:(next:EventPa
 }
 
 export function EventPageBuilder({source="contentBlocks"}:{source?:string}){
-  const {field}=useInput({source});const {watch}=useFormContext();const [selectedId,setSelectedId]=useState<string|null>(null);
+  const {field}=useInput({source});const {watch,setValue}=useFormContext();const [selectedId,setSelectedId]=useState<string|null>(null);
   const raw=Array.isArray(field.value)?field.value:[];
   const blocks:EventPageBlock[]=raw.map((item:Partial<EventPageBlock>,index:number)=>({...item,id:item.id||`block-${index}`} as EventPageBlock));
   const change=(next:EventPageBlock[])=>field.onChange(next);
   const add=(type:EventPageBlock["type"],width:EventPageBlock["width"]="full")=>{const block=freshBlock(type,width);change([...blocks,block]);setSelectedId(block.id);};
   const addColumns=(count:2|3)=>{const width=count===2?"half":"third";const additions=Array.from({length:count},(_,index)=>({...freshBlock("card",width),title:`${index+1}번째 박스`}));change([...blocks,...additions]);setSelectedId(additions[0].id);};
   const starter=()=>{const next=[{...freshBlock("heading"),title:String(watch("title")||"이벤트 안내")},{...freshBlock("text"),title:"이벤트 소개",body:String(watch("summary")||"이벤트의 자세한 내용을 입력하세요.")},freshBlock("countdown"),freshBlock("button"),freshBlock("schedule")];change(next);setSelectedId(next[0].id);};
+  const loadYuiTemplate=()=>{if(blocks.length&&!window.confirm("현재 페이지 요소를 유이 생일 카페 템플릿으로 교체할까요?"))return;const template=YUI_BIRTHDAY_FEATURE_PAGE;const next=(template.contentBlocks||[]).map(block=>({...block,id:crypto.randomUUID()} as EventPageBlock));(["title","menuLabel","slug","summary","coverImageUrl","eventStartAt","themeColor","buttonAlignment","order","active","showInMenu","showOnHome","scheduleItems","actionButtons"] as const).forEach(key=>setValue(key,structuredClone(template[key]??null),{shouldDirty:true}));change(next);setSelectedId(next[0]?.id||null);};
+  const moveBlock=(index:number,direction:-1|1)=>{const target=index+direction;if(target<0||target>=blocks.length)return;const next=[...blocks];[next[index],next[target]]=[next[target],next[index]];change(next);};
   const update=(id:string,next:EventPageBlock)=>change(blocks.map(item=>item.id===id?next:item));
   const selected=blocks.find(item=>item.id===selectedId)||null;
   return <section className="event-page-builder event-page-canvas-editor">
     <header><div><small>VISUAL PAGE EDITOR</small><h2>페이지를 보면서 바로 편집</h2><p>요소를 누르면 바로 수정할 수 있습니다. 2열·3열을 누르면 박스가 나란히 추가됩니다.</p></div><button type="button" onClick={starter}>추천 페이지 만들기</button></header>
-    <div className="event-canvas-toolbar"><div>{BLOCKS.filter(item=>!["divider","spacer"].includes(item.type)).map(item=>{const Icon=item.icon;return <button key={item.type} type="button" onClick={()=>add(item.type)}><Icon/>{item.label}</button>})}</div><div className="layout-tools"><button type="button" onClick={()=>addColumns(2)}><Columns2/>2열 박스</button><button type="button" onClick={()=>addColumns(3)}><Columns3/>3열 박스</button><button type="button" onClick={()=>add("divider")}><Minus/>구분선</button><button type="button" onClick={()=>add("spacer")}><Space/>여백</button></div></div>
+    <div className="event-canvas-toolbar"><div>{BLOCKS.filter(item=>!["divider","spacer"].includes(item.type)).map(item=>{const Icon=item.icon;return <button key={item.type} type="button" onClick={()=>add(item.type)}><Icon/>{item.label}</button>})}</div><div className="layout-tools"><button type="button" onClick={()=>addColumns(2)}><Columns2/>2열 박스</button><button type="button" onClick={()=>addColumns(3)}><Columns3/>3열 박스</button><button type="button" onClick={()=>add("divider")}><Minus/>구분선</button><button type="button" onClick={()=>add("spacer")}><Space/>여백</button><button type="button" onClick={loadYuiTemplate}><LayoutTemplate/>유이 생일카페 템플릿</button><button type="button" disabled={!watch("slug")} onClick={()=>window.open(`/special?slug=${encodeURIComponent(String(watch("slug")||""))}`,"_blank","noopener,noreferrer")}><ExternalLink/>실제 페이지 열기</button></div></div>
     <div className="event-canvas-workspace">
-      <div className="event-visual-canvas" onClick={()=>setSelectedId(null)}><div className="event-canvas-browser-bar"><i/><i/><i/><span>이벤트 페이지 미리보기</span></div><div className="event-canvas-page"><DragDropProvider onDragEnd={event=>change(move(blocks,event) as EventPageBlock[])}>{blocks.map((block,index)=><CanvasBlock key={block.id} block={block} index={index} selected={selectedId===block.id} onSelect={()=>setSelectedId(block.id)} onChange={next=>update(block.id,next)} onRemove={()=>{change(blocks.filter(item=>item.id!==block.id));setSelectedId(null);}} onDuplicate={()=>{const copy={...block,id:crypto.randomUUID()};change([...blocks.slice(0,index+1),copy,...blocks.slice(index+1)]);setSelectedId(copy.id);}} onInsert={()=>{const inserted=freshBlock("text");change([...blocks.slice(0,index+1),inserted,...blocks.slice(index+1)]);setSelectedId(inserted.id);}}/>)}</DragDropProvider>{!blocks.length&&<button className="event-canvas-empty" type="button" onClick={event=>{event.stopPropagation();starter();}}><Plus/><b>첫 요소 추가하기</b><span>추천 구성을 만들거나 위 도구에서 원하는 요소를 누르세요.</span></button>}<button className="event-canvas-bottom-add" type="button" onClick={event=>{event.stopPropagation();add("text");}}><Plus/>아래에 섹션 추가</button></div></div>
+      <div className="event-visual-canvas" onClick={()=>setSelectedId(null)}><div className="event-canvas-browser-bar"><i/><i/><i/><span>이벤트 페이지 미리보기</span></div><div className="event-canvas-page"><DragDropProvider onDragEnd={event=>change(move(blocks,event) as EventPageBlock[])}>{blocks.map((block,index)=><CanvasBlock key={block.id} block={block} index={index} selected={selectedId===block.id} onSelect={()=>setSelectedId(block.id)} onChange={next=>update(block.id,next)} onRemove={()=>{change(blocks.filter(item=>item.id!==block.id));setSelectedId(null);}} onDuplicate={()=>{const copy={...block,id:crypto.randomUUID()};change([...blocks.slice(0,index+1),copy,...blocks.slice(index+1)]);setSelectedId(copy.id);}} onInsert={()=>{const inserted=freshBlock("text");change([...blocks.slice(0,index+1),inserted,...blocks.slice(index+1)]);setSelectedId(inserted.id);}} onMoveUp={index>0?()=>moveBlock(index,-1):undefined} onMoveDown={index<blocks.length-1?()=>moveBlock(index,1):undefined}/>)}</DragDropProvider>{!blocks.length&&<button className="event-canvas-empty" type="button" onClick={event=>{event.stopPropagation();starter();}}><Plus/><b>첫 요소 추가하기</b><span>추천 구성을 만들거나 위 도구에서 원하는 요소를 누르세요.</span></button>}<button className="event-canvas-bottom-add" type="button" onClick={event=>{event.stopPropagation();add("text");}}><Plus/>아래에 섹션 추가</button></div></div>
       {selected?<Inspector block={selected} onChange={next=>update(selected.id,next)}/>:<aside className="event-canvas-inspector empty"><Square/><b>페이지 요소를 선택하세요</b><p>선택한 박스의 링크, 색상, 정렬을 여기서 바꿀 수 있습니다.</p></aside>}
     </div>
   </section>;
